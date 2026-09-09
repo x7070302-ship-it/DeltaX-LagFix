@@ -1,6 +1,7 @@
 --[[
     Delta X - Lag Fix
-    Phiên bản: 1.1
+    Phiên bản: 1.2
+    Tác giả: Minh Tiến
     Client-side FPS / Graphics Optimizer
     Chỉ tối ưu đồ họa và giao diện, không tự động chơi game.
 ]]
@@ -21,7 +22,19 @@ local LocalPlayer = Players.LocalPlayer
 -- CẤU HÌNH
 --==================================================
 
-local VERSION = "1.1"
+local VERSION = "1.2"
+
+local FPS_TARGET = 120
+local FPSCapEnabled = false
+
+local function setFPSCap120(enabled)
+    FPSCapEnabled = enabled
+    if typeof(setfpscap) == "function" then
+        safe(function() setfpscap(enabled and FPS_TARGET or 60) end)
+        return true
+    end
+    return false
+end
 
 local Config = {
     ShowFPS = true,
@@ -345,6 +358,19 @@ local function restoreAll()
     Config.Optimized = false
 end
 
+local function optimize120()
+    setFeature("PostFX", true)
+    setFeature("Particles", true)
+    setFeature("Trails", true)
+    setFeature("Beams", true)
+    setFeature("FireSmoke", true)
+    setFeature("Shadows", true)
+    setFeature("Terrain", true)
+    local supported = setFPSCap120(true)
+    Config.Optimized = true
+    return supported
+end
+
 local function applyPreset(name)
     Config.Preset = name
 
@@ -358,13 +384,7 @@ local function applyPreset(name)
         setFeature("Terrain", false)
 
     elseif name == "Hiệu năng" then
-        setFeature("PostFX", true)
-        setFeature("Particles", true)
-        setFeature("Trails", true)
-        setFeature("Beams", true)
-        setFeature("FireSmoke", true)
-        setFeature("Shadows", true)
-        setFeature("Terrain", true)
+        optimize120()
 
     elseif name == "Siêu nhẹ" then
         setFeature("PostFX", true)
@@ -631,6 +651,7 @@ createSideButton("Trang chủ", "⌂")
 createSideButton("FPS Boost", "◉")
 createSideButton("Đồ họa", "▣")
 createSideButton("Hiệu ứng", "✦")
+createSideButton("Tiện ích", "▦")
 createSideButton("Nâng cao", "⚙")
 createSideButton("Cài đặt", "☷")
 
@@ -835,8 +856,9 @@ heroDesc.Position = UDim2.fromOffset(95, 48)
 heroDesc.Size = UDim2.new(1, -110, 0, 34)
 
 local Optimize = button(Hero, "⚡ BẬT TỐI ƯU", function()
-    applyPreset("Hiệu năng")
-    notification("Đã tối ưu", "Các tùy chọn hiệu năng cao đã được bật.", "success")
+    local supported = optimize120()
+    local msg = supported and "Đã bật tối ưu hiệu năng + mục tiêu 120 FPS." or "Đã tối ưu đồ họa; môi trường hiện tại không hỗ trợ đặt cap 120 FPS."
+    notification("Đã tối ưu", msg, supported and "success" or "warning")
 end, 180)
 
 Optimize.Position = UDim2.fromOffset(95, 96)
@@ -1067,6 +1089,56 @@ note.Size = UDim2.new(1, -26, 1, 0)
 note.TextWrapped = true
 
 --==================================================
+-- TIỆN ÍCH
+--==================================================
+
+local Utilities = createPage("Tiện ích")
+section(Utilities, "Tiện ích", "Công cụ nhanh cho trải nghiệm mượt và dễ điều khiển")
+
+local fps120Card = card(Utilities, 112)
+local f120t = label(fps120Card, "FPS tối đa 120", 13, COLORS.TEXT, true)
+f120t.Position = UDim2.fromOffset(13, 9)
+f120t.Size = UDim2.new(1, -190, 0, 22)
+local f120d = label(fps120Card, "Yêu cầu game/thiết bị/môi trường hỗ trợ giới hạn FPS.", 9, COLORS.MUTED, false)
+f120d.Position = UDim2.fromOffset(13, 34)
+f120d.Size = UDim2.new(1, -190, 0, 34)
+f120d.TextWrapped = true
+local fps120Btn = button(fps120Card, "⚡ BẬT 120 FPS", function()
+    local supported = optimize120()
+    notification("120 FPS", supported and "Đã đặt giới hạn FPS mục tiêu lên 120." or "Môi trường không có setfpscap; vẫn tối ưu đồ họa.", supported and "success" or "warning")
+end, 155)
+fps120Btn.Position = UDim2.new(1, -168, 0.5, -18)
+
+local quickCard = card(Utilities, 126)
+local qtitle = label(quickCard, "Thao tác nhanh", 13, COLORS.TEXT, true)
+qtitle.Position = UDim2.fromOffset(13, 9)
+qtitle.Size = UDim2.new(1, -26, 0, 22)
+local b1 = button(quickCard, "🚀 Tối ưu tối đa", function()
+    optimize120()
+    notification("Đã tối ưu", "Preset Hiệu năng + mục tiêu 120 FPS đã được áp dụng.", "success")
+end, 150)
+b1.Position = UDim2.fromOffset(13, 42)
+local b2 = button(quickCard, "🧹 Dọn hiệu ứng", function()
+    setFeature("PostFX", true); setFeature("Particles", true); setFeature("Trails", true); setFeature("Beams", true); setFeature("FireSmoke", true)
+    notification("Đã dọn", "Các hiệu ứng hình ảnh nặng đã được tắt.", "success")
+end, 140)
+b2.Position = UDim2.fromOffset(172, 42)
+local b3 = button(quickCard, "↺ Khôi phục", function()
+    restoreAll(); setFPSCap120(false)
+    notification("Đã khôi phục", "Đã hoàn tác các thay đổi của Delta X.", "success")
+end, 125)
+b3.Position = UDim2.fromOffset(321, 42)
+
+local dragInfo = card(Utilities, 78)
+local dragTitle = label(dragInfo, "Nút menu nổi", 12, COLORS.TEXT, true)
+dragTitle.Position = UDim2.fromOffset(13, 9)
+dragTitle.Size = UDim2.new(1, -26, 0, 20)
+local dragDesc = label(dragInfo, "Khi thu nhỏ, giữ và kéo biểu tượng DX để đặt ở bất kỳ vị trí nào trên màn hình.", 9, COLORS.MUTED, false)
+dragDesc.Position = UDim2.fromOffset(13, 32)
+dragDesc.Size = UDim2.new(1, -26, 0, 32)
+dragDesc.TextWrapped = true
+
+--==================================================
 -- CÀI ĐẶT
 --==================================================
 
@@ -1097,7 +1169,7 @@ local at = label(about, "Delta X - Lag Fix", 14, COLORS.TEXT, true)
 at.Position = UDim2.fromOffset(13, 10)
 at.Size = UDim2.new(1, -26, 0, 22)
 
-local av = label(about, "Phiên bản " .. VERSION .. "\nClient-side performance utility\nKhông có auto farm, aimbot, teleport hay bypass.", 9, COLORS.MUTED, false)
+local av = label(about, "Phiên bản " .. VERSION .. "\nTác giả: Minh Tiến\nClient-side performance utility\nKhông có auto farm, aimbot, teleport hay bypass.", 9, COLORS.MUTED, false)
 av.Position = UDim2.fromOffset(13, 35)
 av.Size = UDim2.new(1, -26, 0, 55)
 av.TextWrapped = true
@@ -1192,6 +1264,7 @@ end)
 
 Close.MouseButton1Click:Connect(function()
     restoreAll()
+    setFPSCap120(false)
 
     if DescendantConnection then
         safe(function() DescendantConnection:Disconnect() end)
@@ -1199,6 +1272,25 @@ Close.MouseButton1Click:Connect(function()
 
     safe(function() ScreenGui:Destroy() end)
 end)
+
+-- Nút nổi cũng kéo được khi menu đang thu nhỏ.
+do
+    local miniDragging, miniStart, miniPos = false, nil, nil
+    Mini.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            miniDragging = true; miniStart = input.Position; miniPos = Mini.Position
+        end
+    end)
+    Mini.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then miniDragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if miniDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local d = input.Position - miniStart
+            Mini.Position = UDim2.new(miniPos.X.Scale, miniPos.X.Offset + d.X, miniPos.Y.Scale, miniPos.Y.Offset + d.Y)
+        end
+    end)
+end
 
 --==================================================
 -- KÉO MENU: CHUỘT + CẢM ỨNG
