@@ -1,8 +1,8 @@
 --[[
     Delta X - Lag Fix
+    Phiên bản: 1.1
     Client-side FPS / Graphics Optimizer
-    No gameplay automation
-    v1.0
+    Chỉ tối ưu đồ họa và giao diện, không tự động chơi game.
 ]]
 
 repeat task.wait() until game:IsLoaded()
@@ -11,416 +11,683 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
-local Stats = game:GetService("Stats")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Stats = game:GetService("Stats")
 
-local Player = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer
 
---//====================================================
---// CONFIG
---//====================================================
+--==================================================
+-- CẤU HÌNH
+--==================================================
+
+local VERSION = "1.1"
 
 local Config = {
-    FPSBoost = false,
+    ShowFPS = true,
+    ShowPing = true,
+    Notifications = true,
+    Animations = true,
+    Preset = "Cân bằng",
+    Optimized = false,
+}
+
+--==================================================
+-- AN TOÀN / TIỆN ÍCH
+--==================================================
+
+local function safe(fn, ...)
+    local ok, a, b, c = pcall(fn, ...)
+    return ok, a, b, c
+end
+
+local function tween(obj, info, props)
+    if not obj or not obj.Parent then return end
+    safe(function()
+        TweenService:Create(obj, info, props):Play()
+    end)
+end
+
+local function getGuiParent()
+    local parent
+    safe(function()
+        if typeof(gethui) == "function" then
+            parent = gethui()
+        end
+    end)
+
+    if not parent then
+        safe(function()
+            parent = game:GetService("CoreGui")
+        end)
+    end
+
+    if not parent then
+        parent = LocalPlayer:WaitForChild("PlayerGui")
+    end
+
+    return parent
+end
+
+local GUI_PARENT = getGuiParent()
+
+local old = GUI_PARENT:FindFirstChild("DeltaX_LagFix")
+if old then
+    old:Destroy()
+end
+
+--==================================================
+-- TRẠNG THÁI / RESTORE
+--==================================================
+
+local Original = {
+    Lighting = {},
+    Terrain = {},
+    Effects = {},
+    VisualObjects = {},
+    CastShadow = {},
+}
+
+local Counts = {
+    Scanned = 0,
+    Particles = 0,
+    Trails = 0,
+    Beams = 0,
+    PostFX = 0,
+    FireSmoke = 0,
+    Shadows = 0,
+}
+
+local FeatureState = {
     Particles = false,
     Trails = false,
     Beams = false,
     PostFX = false,
+    FireSmoke = false,
     Shadows = false,
-    Textures = false,
     Terrain = false,
-    Decorations = false,
-
-    ShowFPS = true,
-    ShowPing = true,
-
-    Preset = "Balanced"
 }
 
-local Saved = {
-    Lighting = {},
-    Effects = {},
-    Terrain = {},
-    Parts = {}
-}
+local DescendantConnection
 
---//====================================================
---// SAFE CALL
---//====================================================
-
-local function safe(fn, ...)
-    local ok, result = pcall(fn, ...)
-    return ok, result
-end
-
---//====================================================
---// GUI ROOT
---//====================================================
-
-local GuiParent
+-- Lưu trạng thái trước khi sửa
+safe(function()
+    Original.Lighting.GlobalShadows = Lighting.GlobalShadows
+    Original.Lighting.Brightness = Lighting.Brightness
+    Original.Lighting.EnvironmentDiffuseScale = Lighting.EnvironmentDiffuseScale
+    Original.Lighting.EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale
+end)
 
 safe(function()
-    if gethui then
-        GuiParent = gethui()
-    else
-        GuiParent = game:GetService("CoreGui")
+    local terrain = Workspace:FindFirstChildOfClass("Terrain")
+    if terrain then
+        Original.Terrain.WaterWaveSize = terrain.WaterWaveSize
+        Original.Terrain.WaterWaveSpeed = terrain.WaterWaveSpeed
+        Original.Terrain.WaterReflectance = terrain.WaterReflectance
+        Original.Terrain.WaterTransparency = terrain.WaterTransparency
+        Original.Terrain.Decoration = terrain.Decoration
     end
 end)
 
-if not GuiParent then
-    GuiParent = Player:WaitForChild("PlayerGui")
+local POSTFX_CLASSES = {
+    BloomEffect = true,
+    BlurEffect = true,
+    SunRaysEffect = true,
+    ColorCorrectionEffect = true,
+    DepthOfFieldEffect = true,
+}
+
+local VISUAL_CLASSES = {
+    ParticleEmitter = "Particles",
+    Trail = "Trails",
+    Beam = "Beams",
+    Fire = "FireSmoke",
+    Smoke = "FireSmoke",
+    Sparkles = "FireSmoke",
+}
+
+local function rememberEnabled(obj)
+    if Original.Effects[obj] == nil then
+        Original.Effects[obj] = obj.Enabled
+    end
 end
 
-local old = GuiParent:FindFirstChild("DeltaX_LagFix")
-if old then
-    old:Destroy()
+local function rememberShadow(obj)
+    if Original.CastShadow[obj] == nil then
+        Original.CastShadow[obj] = obj.CastShadow
+    end
 end
+
+local function disableObject(obj, feature)
+    if not obj or not obj.Parent then return false end
+
+    if feature == "PostFX" and POSTFX_CLASSES[obj.ClassName] then
+        rememberEnabled(obj)
+        safe(function() obj.Enabled = false end)
+        return true
+    end
+
+    local typeName = VISUAL_CLASSES[obj.ClassName]
+    if typeName == feature then
+        rememberEnabled(obj)
+        safe(function() obj.Enabled = false end)
+        return true
+    end
+
+    if feature == "Shadows" and obj:IsA("BasePart") then
+        rememberShadow(obj)
+        safe(function() obj.CastShadow = false end)
+        return true
+    end
+
+    return false
+end
+
+local function applyFeatureToObject(obj, feature)
+    if not obj then return end
+    disableObject(obj, feature)
+end
+
+local function scanAndDisable(feature)
+    Counts.Scanned = 0
+    local count = 0
+
+    safe(function()
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            Counts.Scanned += 1
+
+            if disableObject(obj, feature) then
+                count += 1
+            end
+        end
+    end)
+
+    for _, obj in ipairs(Lighting:GetChildren()) do
+        if feature == "PostFX" and POSTFX_CLASSES[obj.ClassName] then
+            if disableObject(obj, feature) then
+                count += 1
+            end
+        end
+    end
+
+    if feature == "Particles" then
+        Counts.Particles = count
+    elseif feature == "Trails" then
+        Counts.Trails = count
+    elseif feature == "Beams" then
+        Counts.Beams = count
+    elseif feature == "PostFX" then
+        Counts.PostFX = count
+    elseif feature == "FireSmoke" then
+        Counts.FireSmoke = count
+    elseif feature == "Shadows" then
+        Counts.Shadows = count
+    end
+end
+
+local function setLightingLow()
+    safe(function()
+        Lighting.GlobalShadows = false
+    end)
+
+    safe(function()
+        Lighting.EnvironmentDiffuseScale = 0
+        Lighting.EnvironmentSpecularScale = 0
+    end)
+end
+
+local function setTerrainLow()
+    local terrain = Workspace:FindFirstChildOfClass("Terrain")
+    if not terrain then return end
+
+    safe(function()
+        terrain.WaterWaveSize = 0
+        terrain.WaterWaveSpeed = 0
+        terrain.WaterReflectance = 0
+        terrain.Decoration = false
+    end)
+end
+
+local function setFeature(feature, enabled)
+    FeatureState[feature] = enabled
+
+    if enabled then
+        scanAndDisable(feature)
+
+        if feature == "Terrain" then
+            setTerrainLow()
+        elseif feature == "Shadows" then
+            setLightingLow()
+            scanAndDisable("Shadows")
+        end
+    else
+        -- Khôi phục riêng nhóm này
+        for obj, oldState in pairs(Original.Effects) do
+            if obj and obj.Parent then
+                local matches = false
+
+                if feature == "PostFX" and POSTFX_CLASSES[obj.ClassName] then
+                    matches = true
+                elseif VISUAL_CLASSES[obj.ClassName] == feature then
+                    matches = true
+                end
+
+                if matches then
+                    safe(function() obj.Enabled = oldState end)
+                end
+            end
+        end
+
+        if feature == "Shadows" then
+            for obj, oldState in pairs(Original.CastShadow) do
+                if obj and obj.Parent then
+                    safe(function() obj.CastShadow = oldState end)
+                end
+            end
+
+            safe(function()
+                Lighting.GlobalShadows = Original.Lighting.GlobalShadows
+                Lighting.EnvironmentDiffuseScale = Original.Lighting.EnvironmentDiffuseScale
+                Lighting.EnvironmentSpecularScale = Original.Lighting.EnvironmentSpecularScale
+            end)
+        end
+
+        if feature == "Terrain" then
+            local terrain = Workspace:FindFirstChildOfClass("Terrain")
+            if terrain then
+                safe(function()
+                    terrain.WaterWaveSize = Original.Terrain.WaterWaveSize
+                    terrain.WaterWaveSpeed = Original.Terrain.WaterWaveSpeed
+                    terrain.WaterReflectance = Original.Terrain.WaterReflectance
+                    terrain.WaterTransparency = Original.Terrain.WaterTransparency
+                    terrain.Decoration = Original.Terrain.Decoration
+                end)
+            end
+        end
+    end
+end
+
+local function restoreAll()
+    for obj, oldState in pairs(Original.Effects) do
+        if obj and obj.Parent then
+            safe(function() obj.Enabled = oldState end)
+        end
+    end
+
+    for obj, oldState in pairs(Original.CastShadow) do
+        if obj and obj.Parent then
+            safe(function() obj.CastShadow = oldState end)
+        end
+    end
+
+    safe(function()
+        Lighting.GlobalShadows = Original.Lighting.GlobalShadows
+        Lighting.Brightness = Original.Lighting.Brightness
+        Lighting.EnvironmentDiffuseScale = Original.Lighting.EnvironmentDiffuseScale
+        Lighting.EnvironmentSpecularScale = Original.Lighting.EnvironmentSpecularScale
+    end)
+
+    local terrain = Workspace:FindFirstChildOfClass("Terrain")
+    if terrain then
+        safe(function()
+            terrain.WaterWaveSize = Original.Terrain.WaterWaveSize
+            terrain.WaterWaveSpeed = Original.Terrain.WaterWaveSpeed
+            terrain.WaterReflectance = Original.Terrain.WaterReflectance
+            terrain.WaterTransparency = Original.Terrain.WaterTransparency
+            terrain.Decoration = Original.Terrain.Decoration
+        end)
+    end
+
+    for k in pairs(FeatureState) do
+        FeatureState[k] = false
+    end
+
+    Config.Optimized = false
+end
+
+local function applyPreset(name)
+    Config.Preset = name
+
+    if name == "Cân bằng" then
+        setFeature("PostFX", true)
+        setFeature("Particles", true)
+        setFeature("Trails", false)
+        setFeature("Beams", false)
+        setFeature("FireSmoke", false)
+        setFeature("Shadows", false)
+        setFeature("Terrain", false)
+
+    elseif name == "Hiệu năng" then
+        setFeature("PostFX", true)
+        setFeature("Particles", true)
+        setFeature("Trails", true)
+        setFeature("Beams", true)
+        setFeature("FireSmoke", true)
+        setFeature("Shadows", true)
+        setFeature("Terrain", true)
+
+    elseif name == "Siêu nhẹ" then
+        setFeature("PostFX", true)
+        setFeature("Particles", true)
+        setFeature("Trails", true)
+        setFeature("Beams", true)
+        setFeature("FireSmoke", true)
+        setFeature("Shadows", true)
+        setFeature("Terrain", true)
+    end
+
+    Config.Optimized = true
+end
+
+-- Tự xử lý hiệu ứng mới xuất hiện khi tối ưu đang bật.
+DescendantConnection = Workspace.DescendantAdded:Connect(function(obj)
+    task.defer(function()
+        for feature, enabled in pairs(FeatureState) do
+            if enabled then
+                applyFeatureToObject(obj, feature)
+            end
+        end
+    end)
+end)
+
+--==================================================
+-- GUI
+--==================================================
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "DeltaX_LagFix"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = GuiParent
+ScreenGui.Parent = GUI_PARENT
 
---//====================================================
---// HELPERS
---//====================================================
-
-local function New(class, props, parent)
-    local obj = Instance.new(class)
-
+local function new(className, props, parent)
+    local obj = Instance.new(className)
     for k, v in pairs(props or {}) do
-        safe(function()
-            obj[k] = v
-        end)
+        safe(function() obj[k] = v end)
     end
-
     obj.Parent = parent
     return obj
 end
 
-local function Corner(obj, radius)
-    New("UICorner", {
-        CornerRadius = UDim.new(0, radius or 8)
-    }, obj)
+local function corner(obj, radius)
+    new("UICorner", {CornerRadius = UDim.new(0, radius or 10)}, obj)
 end
 
-local function Stroke(obj, color, transparency, thickness)
-    New("UIStroke", {
-        Color = color or Color3.fromRGB(40, 120, 255),
+local function stroke(obj, color, transparency, thickness)
+    new("UIStroke", {
+        Color = color,
         Transparency = transparency or 0,
-        Thickness = thickness or 1
+        Thickness = thickness or 1,
     }, obj)
 end
 
-local function Gradient(obj, c1, c2, rotation)
-    local g = New("UIGradient", {
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, c1),
-            ColorSequenceKeypoint.new(1, c2)
-        }),
-        Rotation = rotation or 0
-    }, obj)
-
-    return g
-end
-
-local function Text(parent, text, size, color, bold)
-    return New("TextLabel", {
+local function label(parent, text, size, color, bold)
+    return new("TextLabel", {
         BackgroundTransparency = 1,
         Text = text,
-        TextColor3 = color or Color3.fromRGB(235, 240, 255),
-        TextSize = size or 14,
+        TextColor3 = color,
+        TextSize = size,
         Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham,
-        TextXAlignment = Enum.TextXAlignment.Left
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Center,
     }, parent)
 end
 
---//====================================================
---// COLORS
---//====================================================
+local COLORS = {
+    BG = Color3.fromRGB(4, 9, 18),
+    PANEL = Color3.fromRGB(8, 17, 31),
+    PANEL2 = Color3.fromRGB(12, 26, 44),
+    BLUE = Color3.fromRGB(0, 125, 255),
+    BLUE2 = Color3.fromRGB(35, 165, 255),
+    TEXT = Color3.fromRGB(235, 243, 255),
+    MUTED = Color3.fromRGB(135, 155, 180),
+    GREEN = Color3.fromRGB(45, 225, 105),
+    YELLOW = Color3.fromRGB(255, 205, 70),
+    RED = Color3.fromRGB(255, 70, 85),
+}
 
-local BG = Color3.fromRGB(5, 10, 20)
-local PANEL = Color3.fromRGB(9, 18, 32)
-local PANEL2 = Color3.fromRGB(12, 25, 43)
-local BLUE = Color3.fromRGB(0, 125, 255)
-local BLUE2 = Color3.fromRGB(45, 170, 255)
-local TEXT = Color3.fromRGB(235, 242, 255)
-local MUTED = Color3.fromRGB(135, 155, 180)
-local GREEN = Color3.fromRGB(45, 230, 110)
-local RED = Color3.fromRGB(255, 75, 90)
-
---//====================================================
---// MAIN WINDOW
---//====================================================
-
-local Main = New("Frame", {
-    Size = UDim2.new(0, 720, 0, 470),
-    Position = UDim2.new(0.5, -360, 0.5, -235),
-    BackgroundColor3 = BG,
-    BorderSizePixel = 0
+local Main = new("Frame", {
+    Size = UDim2.fromOffset(720, 480),
+    Position = UDim2.new(0.5, -360, 0.5, -240),
+    BackgroundColor3 = COLORS.BG,
+    BorderSizePixel = 0,
+    Active = true,
 }, ScreenGui)
 
-Corner(Main, 14)
-Stroke(Main, Color3.fromRGB(0, 115, 255), 0.25, 1)
+corner(Main, 14)
+stroke(Main, Color3.fromRGB(0, 120, 255), 0.25, 1)
 
-Gradient(
-    Main,
-    Color3.fromRGB(5, 15, 30),
-    Color3.fromRGB(3, 7, 14),
-    90
-)
+--==================================================
+-- HEADER
+--==================================================
 
---//====================================================
---// HEADER
---//====================================================
-
-local Header = New("Frame", {
-    Size = UDim2.new(1, 0, 0, 64),
-    BackgroundTransparency = 1
+local Header = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 62),
+    BackgroundTransparency = 1,
+    Active = true,
 }, Main)
 
-local Logo = New("Frame", {
-    Size = UDim2.new(0, 45, 0, 45),
-    Position = UDim2.new(0, 12, 0, 9),
-    BackgroundColor3 = Color3.fromRGB(0, 90, 210)
+local Logo = new("Frame", {
+    Size = UDim2.fromOffset(42, 42),
+    Position = UDim2.fromOffset(12, 10),
+    BackgroundColor3 = Color3.fromRGB(0, 83, 190),
 }, Header)
 
-Corner(Logo, 12)
+corner(Logo, 11)
 
-local LogoText = Text(
-    Logo,
-    "▶",
-    25,
-    Color3.fromRGB(255,255,255),
-    true
-)
-
-LogoText.Size = UDim2.fromScale(1,1)
+local LogoText = label(Logo, "▶", 24, COLORS.TEXT, true)
+LogoText.Size = UDim2.fromScale(1, 1)
 LogoText.TextXAlignment = Enum.TextXAlignment.Center
-LogoText.TextYAlignment = Enum.TextYAlignment.Center
 
-local Title = Text(Header, "Delta X - Lag Fix", 18, TEXT, true)
-Title.Position = UDim2.new(0, 68, 0, 10)
-Title.Size = UDim2.new(0, 300, 0, 25)
+local Title = label(Header, "Delta X - Lag Fix", 18, COLORS.TEXT, true)
+Title.Position = UDim2.fromOffset(65, 7)
+Title.Size = UDim2.new(0, 300, 0, 24)
 
-local Subtitle = Text(
-    Header,
-    "Tối ưu hiệu suất • Mượt mà hơn",
-    11,
-    MUTED,
-    false
-)
+local Subtitle = label(Header, "Tối ưu hiệu suất • Mượt hơn • Nhẹ hơn", 10, COLORS.MUTED, false)
+Subtitle.Position = UDim2.fromOffset(65, 31)
+Subtitle.Size = UDim2.new(0, 330, 0, 18)
 
-Subtitle.Position = UDim2.new(0, 68, 0, 34)
-Subtitle.Size = UDim2.new(0, 300, 0, 20)
-
-local Version = Text(Header, "v1.0", 11, BLUE2, true)
-Version.Position = UDim2.new(1, -95, 0, 12)
-Version.Size = UDim2.new(0, 35, 0, 20)
+local Version = label(Header, "v" .. VERSION, 10, COLORS.BLUE2, true)
+Version.Position = UDim2.new(1, -120, 0, 10)
+Version.Size = UDim2.fromOffset(35, 22)
 Version.TextXAlignment = Enum.TextXAlignment.Right
 
---//====================================================
---// WINDOW BUTTONS
---//====================================================
-
-local Minimize = New("TextButton", {
-    Size = UDim2.new(0, 30, 0, 30),
-    Position = UDim2.new(1, -70, 0, 12),
-    BackgroundColor3 = PANEL2,
+local Minimize = new("TextButton", {
+    Size = UDim2.fromOffset(30, 30),
+    Position = UDim2.new(1, -72, 0, 9),
+    BackgroundColor3 = COLORS.PANEL2,
     Text = "—",
-    TextColor3 = TEXT,
-    TextSize = 17,
+    TextColor3 = COLORS.TEXT,
+    TextSize = 16,
     Font = Enum.Font.GothamBold,
-    AutoButtonColor = false
+    AutoButtonColor = false,
 }, Header)
 
-Corner(Minimize, 8)
+corner(Minimize, 8)
 
-local Close = New("TextButton", {
-    Size = UDim2.new(0, 30, 0, 30),
-    Position = UDim2.new(1, -35, 0, 12),
-    BackgroundColor3 = PANEL2,
+local Close = new("TextButton", {
+    Size = UDim2.fromOffset(30, 30),
+    Position = UDim2.new(1, -36, 0, 9),
+    BackgroundColor3 = COLORS.PANEL2,
     Text = "×",
-    TextColor3 = TEXT,
+    TextColor3 = COLORS.TEXT,
     TextSize = 18,
     Font = Enum.Font.GothamBold,
-    AutoButtonColor = false
+    AutoButtonColor = false,
 }, Header)
 
-Corner(Close, 8)
+corner(Close, 8)
 
---//====================================================
---// SIDEBAR
---//====================================================
+--==================================================
+-- SIDEBAR
+--==================================================
 
-local Sidebar = New("Frame", {
-    Size = UDim2.new(0, 160, 1, -75),
-    Position = UDim2.new(0, 10, 0, 70),
-    BackgroundColor3 = Color3.fromRGB(6, 14, 26),
-    BorderSizePixel = 0
+local Sidebar = new("Frame", {
+    Size = UDim2.new(0, 160, 1, -76),
+    Position = UDim2.fromOffset(10, 68),
+    BackgroundColor3 = Color3.fromRGB(6, 14, 25),
+    BorderSizePixel = 0,
 }, Main)
 
-Corner(Sidebar, 12)
+corner(Sidebar, 11)
 
-local SideLayout = New("UIListLayout", {
-    Padding = UDim.new(0, 6),
-    SortOrder = Enum.SortOrder.LayoutOrder
+local SidePadding = new("UIPadding", {
+    PaddingTop = UDim.new(0, 9),
+    PaddingLeft = UDim.new(0, 8),
+    PaddingRight = UDim.new(0, 8),
 }, Sidebar)
 
-New("UIPadding", {
-    PaddingTop = UDim.new(0, 10),
-    PaddingLeft = UDim.new(0, 8),
-    PaddingRight = UDim.new(0, 8)
+local SideLayout = new("UIListLayout", {
+    Padding = UDim.new(0, 5),
+    SortOrder = Enum.SortOrder.LayoutOrder,
 }, Sidebar)
 
 local Pages = {}
 local SideButtons = {}
+local CurrentPage = "Trang chủ"
 
-local function CreatePage(name)
-    local page = New("ScrollingFrame", {
+local function createPage(name)
+    local page = new("ScrollingFrame", {
         Name = name,
-        Size = UDim2.new(1, -185, 1, -75),
-        Position = UDim2.new(0, 175, 0, 70),
+        Size = UDim2.new(1, -182, 1, -76),
+        Position = UDim2.fromOffset(173, 68),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         ScrollBarThickness = 3,
-        ScrollBarImageColor3 = BLUE,
-        CanvasSize = UDim2.new(0,0,0,0),
+        ScrollBarImageColor3 = COLORS.BLUE,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        Visible = false
+        ScrollingDirection = Enum.ScrollingDirection.Y,
+        Visible = false,
     }, Main)
 
-    New("UIPadding", {
+    new("UIPadding", {
         PaddingLeft = UDim.new(0, 8),
         PaddingRight = UDim.new(0, 10),
-        PaddingBottom = UDim.new(0, 15)
+        PaddingBottom = UDim.new(0, 16),
+    }, page)
+
+    new("UIListLayout", {
+        Padding = UDim.new(0, 8),
+        SortOrder = Enum.SortOrder.LayoutOrder,
     }, page)
 
     Pages[name] = page
     return page
 end
 
-local function CreateSideButton(name, icon)
-    local btn = New("TextButton", {
-        Size = UDim2.new(1, 0, 0, 40),
-        BackgroundColor3 = Color3.fromRGB(7, 17, 30),
+local function createSideButton(name, icon)
+    local btn = new("TextButton", {
+        Size = UDim2.new(1, 0, 0, 38),
+        BackgroundColor3 = Color3.fromRGB(7, 16, 28),
         Text = "",
         AutoButtonColor = false,
-        LayoutOrder = #SideButtons + 1
+        LayoutOrder = #SideButtons + 1,
     }, Sidebar)
 
-    Corner(btn, 8)
+    corner(btn, 8)
 
-    local ic = Text(btn, icon, 16, MUTED, true)
-    ic.Position = UDim2.new(0, 10, 0, 0)
-    ic.Size = UDim2.new(0, 25, 1, 0)
+    local ic = label(btn, icon, 15, COLORS.MUTED, true)
+    ic.Position = UDim2.fromOffset(8, 0)
+    ic.Size = UDim2.fromOffset(26, 38)
     ic.TextXAlignment = Enum.TextXAlignment.Center
-    ic.TextYAlignment = Enum.TextYAlignment.Center
 
-    local label = Text(btn, name, 12, MUTED, true)
-    label.Position = UDim2.new(0, 40, 0, 0)
-    label.Size = UDim2.new(1, -45, 1, 0)
-    label.TextYAlignment = Enum.TextYAlignment.Center
+    local txt = label(btn, name, 11, COLORS.MUTED, true)
+    txt.Position = UDim2.fromOffset(39, 0)
+    txt.Size = UDim2.new(1, -44, 1, 0)
 
     SideButtons[name] = {
         Button = btn,
         Icon = ic,
-        Label = label
+        Text = txt,
     }
 
     btn.MouseButton1Click:Connect(function()
+        CurrentPage = name
+
         for n, data in pairs(SideButtons) do
-            data.Button.BackgroundColor3 = Color3.fromRGB(7,17,30)
-            data.Icon.TextColor3 = MUTED
-            data.Label.TextColor3 = MUTED
+            data.Button.BackgroundColor3 = Color3.fromRGB(7, 16, 28)
+            data.Icon.TextColor3 = COLORS.MUTED
+            data.Text.TextColor3 = COLORS.MUTED
         end
 
-        btn.BackgroundColor3 = Color3.fromRGB(0, 80, 180)
-        ic.TextColor3 = TEXT
-        label.TextColor3 = TEXT
+        btn.BackgroundColor3 = Color3.fromRGB(0, 76, 175)
+        ic.TextColor3 = COLORS.TEXT
+        txt.TextColor3 = COLORS.TEXT
 
-        for _, p in pairs(Pages) do
-            p.Visible = false
+        for _, page in pairs(Pages) do
+            page.Visible = false
         end
 
         Pages[name].Visible = true
+        Pages[name].CanvasPosition = Vector2.new(0, 0)
     end)
 
     return btn
 end
 
-CreateSideButton("Trang chủ", "⌂")
-CreateSideButton("FPS Boost", "◉")
-CreateSideButton("Đồ họa", "▣")
-CreateSideButton("Hiệu ứng", "✦")
-CreateSideButton("Nâng cao", "⚙")
-CreateSideButton("Cài đặt", "⚙")
+createSideButton("Trang chủ", "⌂")
+createSideButton("FPS Boost", "◉")
+createSideButton("Đồ họa", "▣")
+createSideButton("Hiệu ứng", "✦")
+createSideButton("Nâng cao", "⚙")
+createSideButton("Cài đặt", "☷")
 
-local Footer = Text(
-    Sidebar,
-    "◆ Made for Delta X",
-    9,
-    BLUE2,
-    true
-)
+local Footer = label(Sidebar, "◆ Tối ưu cho Delta X", 9, COLORS.BLUE2, true)
+Footer.Position = UDim2.new(0, 8, 1, -25)
+Footer.Size = UDim2.new(1, -16, 0, 18)
 
-Footer.Position = UDim2.new(0, 10, 1, -25)
-Footer.Size = UDim2.new(1, -20, 0, 20)
+--==================================================
+-- UI HELPERS
+--==================================================
 
---//====================================================
---// PAGE HELPERS
---//====================================================
-
-local function SectionTitle(page, title, desc)
-    local holder = New("Frame", {
-        Size = UDim2.new(1,0,0,55),
-        BackgroundTransparency = 1
+local function section(page, title, desc)
+    local holder = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 50),
+        BackgroundTransparency = 1,
     }, page)
 
-    local t = Text(holder, title, 22, TEXT, true)
-    t.Size = UDim2.new(1,0,0,30)
+    label(holder, title, 20, COLORS.TEXT, true).Size = UDim2.new(1, 0, 0, 26)
 
-    local d = Text(holder, desc or "", 11, MUTED, false)
-    d.Position = UDim2.new(0,0,0,30)
-    d.Size = UDim2.new(1,0,0,20)
+    local d = label(holder, desc or "", 10, COLORS.MUTED, false)
+    d.Position = UDim2.fromOffset(0, 27)
+    d.Size = UDim2.new(1, 0, 0, 18)
 
     return holder
 end
 
-local function Card(page, height)
-    local frame = New("Frame", {
-        Size = UDim2.new(1,0,0,height or 55),
-        BackgroundColor3 = PANEL,
-        BorderSizePixel = 0
+local function card(page, height)
+    local frame = new("Frame", {
+        Size = UDim2.new(1, 0, 0, height or 58),
+        BackgroundColor3 = COLORS.PANEL,
+        BorderSizePixel = 0,
     }, page)
 
-    Corner(frame, 10)
-    Stroke(frame, Color3.fromRGB(25,55,85), 0.55, 1)
-
+    corner(frame, 10)
+    stroke(frame, Color3.fromRGB(25, 52, 80), 0.5, 1)
     return frame
 end
 
-local function Button(parent, text, callback, width)
-    local b = New("TextButton", {
-        Size = UDim2.new(0, width or 150, 0, 38),
-        BackgroundColor3 = BLUE,
+local function button(parent, text, callback, width)
+    local b = new("TextButton", {
+        Size = UDim2.fromOffset(width or 140, 36),
+        BackgroundColor3 = COLORS.BLUE,
         Text = text,
-        TextColor3 = TEXT,
-        TextSize = 12,
+        TextColor3 = COLORS.TEXT,
+        TextSize = 11,
         Font = Enum.Font.GothamBold,
-        AutoButtonColor = false
+        AutoButtonColor = false,
     }, parent)
 
-    Corner(b, 8)
+    corner(b, 8)
 
     b.MouseEnter:Connect(function()
-        b.BackgroundColor3 = BLUE2
+        b.BackgroundColor3 = COLORS.BLUE2
     end)
 
     b.MouseLeave:Connect(function()
-        b.BackgroundColor3 = BLUE
+        b.BackgroundColor3 = COLORS.BLUE
     end)
 
     b.MouseButton1Click:Connect(function()
@@ -430,720 +697,488 @@ local function Button(parent, text, callback, width)
     return b
 end
 
-local function Toggle(page, title, description, default, callback)
-    local card = Card(page, 60)
+local function makeToggle(page, titleText, descText, default, callback)
+    local c = card(page, 58)
 
-    local t = Text(card, title, 12, TEXT, true)
-    t.Position = UDim2.new(0, 14, 0, 8)
-    t.Size = UDim2.new(1, -90, 0, 20)
+    local t = label(c, titleText, 11, COLORS.TEXT, true)
+    t.Position = UDim2.fromOffset(13, 6)
+    t.Size = UDim2.new(1, -90, 0, 22)
 
-    local d = Text(card, description or "", 9, MUTED, false)
-    d.Position = UDim2.new(0, 14, 0, 30)
-    d.Size = UDim2.new(1, -90, 0, 20)
+    local d = label(c, descText or "", 9, COLORS.MUTED, false)
+    d.Position = UDim2.fromOffset(13, 28)
+    d.Size = UDim2.new(1, -90, 0, 18)
 
-    local switch = New("TextButton", {
-        Size = UDim2.new(0, 44, 0, 24),
+    local switch = new("TextButton", {
+        Size = UDim2.fromOffset(44, 24),
         Position = UDim2.new(1, -58, 0.5, -12),
-        BackgroundColor3 = default and BLUE or Color3.fromRGB(35,48,65),
+        BackgroundColor3 = default and COLORS.BLUE or Color3.fromRGB(35, 48, 64),
         Text = "",
-        AutoButtonColor = false
-    }, card)
+        AutoButtonColor = false,
+    }, c)
 
-    Corner(switch, 20)
+    corner(switch, 20)
 
-    local knob = New("Frame", {
-        Size = UDim2.new(0, 18, 0, 18),
-        Position = default
-            and UDim2.new(1,-21,0.5,-9)
-            or UDim2.new(0,3,0.5,-9),
-        BackgroundColor3 = Color3.fromRGB(240,245,255)
+    local knob = new("Frame", {
+        Size = UDim2.fromOffset(18, 18),
+        Position = default and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9),
+        BackgroundColor3 = COLORS.TEXT,
     }, switch)
 
-    Corner(knob, 20)
+    corner(knob, 20)
 
     local state = default
 
-    local function Set(v)
+    local function set(v, invoke)
         state = v
 
-        switch.BackgroundColor3 =
-            state and BLUE or Color3.fromRGB(35,48,65)
+        if Config.Animations then
+            tween(knob, TweenInfo.new(0.15), {
+                Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+            })
+            tween(switch, TweenInfo.new(0.15), {
+                BackgroundColor3 = v and COLORS.BLUE or Color3.fromRGB(35, 48, 64)
+            })
+        else
+            switch.BackgroundColor3 = v and COLORS.BLUE or Color3.fromRGB(35, 48, 64)
+            knob.Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+        end
 
-        knob.Position = state
-            and UDim2.new(1,-21,0.5,-9)
-            or UDim2.new(0,3,0.5,-9)
-
-        safe(callback, state)
+        if invoke then
+            safe(callback, v)
+        end
     end
 
     switch.MouseButton1Click:Connect(function()
-        Set(not state)
+        set(not state, true)
     end)
 
     return {
-        Set = Set,
-        Get = function()
-            return state
-        end
+        Set = function(v) set(v, true) end,
+        Get = function() return state end,
     }
 end
 
---//====================================================
---// OPTIMIZATION FUNCTIONS
---//====================================================
+local function notification(titleText, bodyText, kind)
+    if not Config.Notifications then return end
 
-local function DisablePostFX()
-    for _, obj in ipairs(Lighting:GetChildren()) do
-        if obj:IsA("BloomEffect")
-        or obj:IsA("BlurEffect")
-        or obj:IsA("SunRaysEffect")
-        or obj:IsA("ColorCorrectionEffect")
-        or obj:IsA("DepthOfFieldEffect") then
+    local color = COLORS.BLUE2
+    if kind == "success" then color = COLORS.GREEN end
+    if kind == "warning" then color = COLORS.YELLOW end
+    if kind == "error" then color = COLORS.RED end
 
-            if Saved.Effects[obj] == nil then
-                Saved.Effects[obj] = obj.Enabled
-            end
+    local box = new("Frame", {
+        Size = UDim2.fromOffset(300, 70),
+        Position = UDim2.new(1, 320, 1, -90),
+        BackgroundColor3 = COLORS.PANEL,
+        BorderSizePixel = 0,
+        ZIndex = 50,
+    }, ScreenGui)
 
-            obj.Enabled = false
-        end
-    end
-end
+    corner(box, 10)
+    stroke(box, color, 0.35, 1)
 
-local function EnablePostFX()
-    for obj, state in pairs(Saved.Effects) do
-        if obj and obj.Parent then
-            safe(function()
-                obj.Enabled = state
+    local bar = new("Frame", {
+        Size = UDim2.new(0, 4, 1, 0),
+        BackgroundColor3 = color,
+        BorderSizePixel = 0,
+        ZIndex = 51,
+    }, box)
+
+    corner(bar, 4)
+
+    local t = label(box, titleText, 11, COLORS.TEXT, true)
+    t.Position = UDim2.fromOffset(14, 8)
+    t.Size = UDim2.new(1, -28, 0, 20)
+    t.ZIndex = 51
+
+    local d = label(box, bodyText, 9, COLORS.MUTED, false)
+    d.Position = UDim2.fromOffset(14, 31)
+    d.Size = UDim2.new(1, -28, 0, 30)
+    d.ZIndex = 51
+
+    tween(box, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {
+        Position = UDim2.new(1, -315, 1, -90)
+    })
+
+    task.delay(3, function()
+        if box and box.Parent then
+            tween(box, TweenInfo.new(0.22), {
+                Position = UDim2.new(1, 320, 1, -90)
+            })
+            task.delay(0.25, function()
+                safe(function() box:Destroy() end)
             end)
-        end
-    end
-end
-
-local function DisableParticles()
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("ParticleEmitter") then
-            if Saved.Parts[obj] == nil then
-                Saved.Parts[obj] = obj.Enabled
-            end
-            obj.Enabled = false
-        end
-    end
-end
-
-local function DisableTrails()
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("Trail") then
-            if Saved.Parts[obj] == nil then
-                Saved.Parts[obj] = obj.Enabled
-            end
-            obj.Enabled = false
-        end
-    end
-end
-
-local function DisableBeams()
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("Beam") then
-            if Saved.Parts[obj] == nil then
-                Saved.Parts[obj] = obj.Enabled
-            end
-            obj.Enabled = false
-        end
-    end
-end
-
-local function RestoreAll()
-    EnablePostFX()
-
-    for obj, state in pairs(Saved.Parts) do
-        if obj and obj.Parent then
-            safe(function()
-                obj.Enabled = state
-            end)
-        end
-    end
-
-    safe(function()
-        Lighting.GlobalShadows = Saved.Lighting.GlobalShadows
-    end)
-
-    safe(function()
-        local terrain = Workspace:FindFirstChildOfClass("Terrain")
-
-        if terrain and Saved.Terrain.WaterWaveSize then
-            terrain.WaterWaveSize = Saved.Terrain.WaterWaveSize
-            terrain.WaterWaveSpeed = Saved.Terrain.WaterWaveSpeed
-            terrain.WaterReflectance = Saved.Terrain.WaterReflectance
-            terrain.WaterTransparency = Saved.Terrain.WaterTransparency
         end
     end)
 end
 
---// SAVE ORIGINAL SETTINGS
+--==================================================
+-- TRANG CHỦ
+--==================================================
 
-safe(function()
-    Saved.Lighting.GlobalShadows = Lighting.GlobalShadows
-end)
+local Home = createPage("Trang chủ")
+section(Home, "Tối ưu Roblox", "Giảm tải đồ họa • Theo dõi FPS • Khôi phục dễ dàng")
 
-safe(function()
-    local terrain = Workspace:FindFirstChildOfClass("Terrain")
+local Hero = card(Home, 142)
 
-    if terrain then
-        Saved.Terrain.WaterWaveSize = terrain.WaterWaveSize
-        Saved.Terrain.WaterWaveSpeed = terrain.WaterWaveSpeed
-        Saved.Terrain.WaterReflectance = terrain.WaterReflectance
-        Saved.Terrain.WaterTransparency = terrain.WaterTransparency
-    end
-end)
+local heroIcon = label(Hero, "⚡", 36, COLORS.BLUE2, true)
+heroIcon.Position = UDim2.fromOffset(18, 20)
+heroIcon.Size = UDim2.fromOffset(65, 60)
+heroIcon.TextXAlignment = Enum.TextXAlignment.Center
 
---//====================================================
---// HOME PAGE
---//====================================================
+local heroTitle = label(Hero, "Sẵn sàng tối ưu", 17, COLORS.TEXT, true)
+heroTitle.Position = UDim2.fromOffset(95, 18)
+heroTitle.Size = UDim2.new(1, -110, 0, 25)
 
-local Home = CreatePage("Trang chủ")
+local heroDesc = label(Hero, "Tắt hiệu ứng nặng và giảm tải render mà không xoá object.", 9, COLORS.MUTED, false)
+heroDesc.Position = UDim2.fromOffset(95, 48)
+heroDesc.Size = UDim2.new(1, -110, 0, 34)
 
-SectionTitle(
-    Home,
-    "Tối ưu Roblox",
-    "Giảm tải client • Tăng FPS • Mượt hơn"
-)
+local Optimize = button(Hero, "⚡ BẬT TỐI ƯU", function()
+    applyPreset("Hiệu năng")
+    notification("Đã tối ưu", "Các tùy chọn hiệu năng cao đã được bật.", "success")
+end, 180)
 
-local Hero = Card(Home, 150)
+Optimize.Position = UDim2.fromOffset(95, 96)
 
-local Rocket = Text(Hero, "🚀", 40, BLUE2, true)
-Rocket.Position = UDim2.new(0, 20, 0, 20)
-Rocket.Size = UDim2.new(0, 70, 0, 60)
-Rocket.TextXAlignment = Enum.TextXAlignment.Center
-
-local HeroTitle = Text(Hero, "Sẵn sàng tối ưu", 18, TEXT, true)
-HeroTitle.Position = UDim2.new(0, 105, 0, 22)
-HeroTitle.Size = UDim2.new(1, -120, 0, 28)
-
-local HeroDesc = Text(
-    Hero,
-    "Tắt các hiệu ứng không cần thiết và giảm tải đồ họa.",
-    10,
-    MUTED
-)
-
-HeroDesc.Position = UDim2.new(0, 105, 0, 52)
-HeroDesc.Size = UDim2.new(1, -120, 0, 35)
-
-local OptimizeButton = Button(
-    Hero,
-    "⚡  BẬT TỐI ƯU NGAY",
-    function()
-        Config.FPSBoost = true
-        DisablePostFX()
-        DisableParticles()
-        DisableTrails()
-        DisableBeams()
-
-        safe(function()
-            Lighting.GlobalShadows = false
-        end)
-    end,
-    190
-)
-
-OptimizeButton.Position = UDim2.new(0, 105, 1, -52)
-
-local StatsFrame = New("Frame", {
-    Size = UDim2.new(1,0,0,90),
-    BackgroundTransparency = 1
+local StatsRow = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 84),
+    BackgroundTransparency = 1,
 }, Home)
 
-local function StatCard(pos, title)
-    local c = Card(StatsFrame, 80)
-    c.Size = UDim2.new(0.31,0,1,0)
-    c.Position = pos
+local statsLayout = new("UIListLayout", {
+    FillDirection = Enum.FillDirection.Horizontal,
+    Padding = UDim.new(0, 8),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+}, StatsRow)
 
-    local t = Text(c, title, 10, MUTED, true)
-    t.Position = UDim2.new(0,12,0,10)
-    t.Size = UDim2.new(1,-24,0,20)
+local function statCard(titleText)
+    local c = card(StatsRow, 84)
+    c.Size = UDim2.new(1/3, -6, 1, 0)
 
-    local v = Text(c, "--", 20, GREEN, true)
-    v.Position = UDim2.new(0,12,0,32)
-    v.Size = UDim2.new(1,-24,0,30)
+    local t = label(c, titleText, 9, COLORS.MUTED, true)
+    t.Position = UDim2.fromOffset(11, 8)
+    t.Size = UDim2.new(1, -22, 0, 18)
+
+    local v = label(c, "--", 19, COLORS.GREEN, true)
+    v.Position = UDim2.fromOffset(11, 30)
+    v.Size = UDim2.new(1, -22, 0, 30)
 
     return v
 end
 
-local FPSValue = StatCard(UDim2.new(0,0,0,0), "FPS")
-local PingValue = StatCard(UDim2.new(0.345,0,0,0), "PING")
-local StatusValue = StatCard(UDim2.new(0.69,0,0,0), "STATUS")
+local FPSValue = statCard("FPS")
+local PingValue = statCard("PING")
+local StatusValue = statCard("TRẠNG THÁI")
 
---//====================================================
---// FPS PAGE
---//====================================================
+local InfoCard = card(Home, 58)
+local info = label(InfoCard, "Mẹo: dùng “Cân bằng” để giảm hiệu ứng nhưng vẫn giữ hình ảnh.", 9, COLORS.MUTED, false)
+info.Position = UDim2.fromOffset(12, 0)
+info.Size = UDim2.new(1, -24, 1, 0)
 
-local FPSPage = CreatePage("FPS Boost")
+--==================================================
+-- FPS BOOST
+--==================================================
 
-SectionTitle(
-    FPSPage,
-    "FPS Boost",
-    "Các chế độ tối ưu hiệu suất"
-)
+local FPSPage = createPage("FPS Boost")
+section(FPSPage, "FPS Boost", "Chọn mức tối ưu phù hợp với máy")
 
-local PresetCard = Card(FPSPage, 100)
+local presetCard = card(FPSPage, 102)
 
-local PresetTitle = Text(PresetCard, "Chế độ tối ưu", 13, TEXT, true)
-PresetTitle.Position = UDim2.new(0,14,0,12)
-PresetTitle.Size = UDim2.new(1,-28,0,22)
+local pt = label(presetCard, "Chế độ tối ưu", 12, COLORS.TEXT, true)
+pt.Position = UDim2.fromOffset(13, 10)
+pt.Size = UDim2.new(1, -26, 0, 20)
 
-local presets = {"Balanced", "Performance", "Potato"}
+local presetNames = {"Cân bằng", "Hiệu năng", "Siêu nhẹ"}
 
-for i, preset in ipairs(presets) do
-    local b = Button(PresetCard, preset, function()
-        Config.Preset = preset
+for i, name in ipairs(presetNames) do
+    local b = button(presetCard, name, function()
+        applyPreset(name)
+        notification("Đổi chế độ", "Đang dùng preset: " .. name, "success")
+    end, 112)
 
-        if preset == "Performance" then
-            DisablePostFX()
-            DisableParticles()
-            DisableTrails()
-            DisableBeams()
-
-            safe(function()
-                Lighting.GlobalShadows = false
-            end)
-
-        elseif preset == "Potato" then
-            DisablePostFX()
-            DisableParticles()
-            DisableTrails()
-            DisableBeams()
-
-            safe(function()
-                Lighting.GlobalShadows = false
-            end)
-
-            local terrain = Workspace:FindFirstChildOfClass("Terrain")
-
-            if terrain then
-                safe(function()
-                    terrain.WaterWaveSize = 0
-                    terrain.WaterWaveSpeed = 0
-                    terrain.WaterReflectance = 0
-                end)
-            end
-
-        elseif preset == "Balanced" then
-            DisablePostFX()
-            DisableParticles()
-        end
-    end, 130)
-
-    b.Position = UDim2.new(0, 14 + (i-1)*140, 0, 48)
+    b.Position = UDim2.fromOffset(13 + (i - 1) * 120, 46)
 end
 
-Toggle(
-    FPSPage,
-    "Tắt bóng đổ",
-    "Giảm tải render",
-    false,
-    function(v)
-        safe(function()
-            Lighting.GlobalShadows = not v
-        end)
-    end
-)
+makeToggle(FPSPage, "Tắt bóng đổ", "Giảm tải render ánh sáng.", false, function(v)
+    setFeature("Shadows", v)
+end)
 
-Toggle(
-    FPSPage,
-    "Tắt Particle",
-    "Giảm hiệu ứng hạt",
-    false,
-    function(v)
-        if v then
-            DisableParticles()
-        else
-            RestoreAll()
+makeToggle(FPSPage, "Tắt Particle", "Ẩn hiệu ứng hạt nặng.", false, function(v)
+    setFeature("Particles", v)
+end)
+
+makeToggle(FPSPage, "Tắt Trail", "Ẩn vệt chuyển động.", false, function(v)
+    setFeature("Trails", v)
+end)
+
+makeToggle(FPSPage, "Tắt Beam", "Ẩn hiệu ứng tia.", false, function(v)
+    setFeature("Beams", v)
+end)
+
+--==================================================
+-- ĐỒ HỌA
+--==================================================
+
+local Graphics = createPage("Đồ họa")
+section(Graphics, "Đồ họa", "Giảm hậu kỳ để ưu tiên tốc độ khung hình")
+
+makeToggle(Graphics, "Tắt Bloom", "Giảm ánh sáng phát sáng.", false, function(v)
+    setFeature("PostFX", v)
+end)
+
+-- Các nút riêng bên dưới vẫn cùng nhóm PostFX; mỗi toggle hoạt động như gói hậu kỳ.
+makeToggle(Graphics, "Giảm nước & Terrain", "Giảm sóng nước và trang trí terrain.", false, function(v)
+    setFeature("Terrain", v)
+end)
+
+makeToggle(Graphics, "Tắt Color / Blur / DOF", "Tắt các hiệu ứng hậu kỳ còn lại.", false, function(v)
+    setFeature("PostFX", v)
+end)
+
+makeToggle(Graphics, "Tắt hiệu ứng lửa / khói", "Ẩn Fire, Smoke và Sparkles.", false, function(v)
+    setFeature("FireSmoke", v)
+end)
+
+--==================================================
+-- HIỆU ỨNG
+--==================================================
+
+local Effects = createPage("Hiệu ứng")
+section(Effects, "Hiệu ứng", "Tắt nhanh các hiệu ứng hình ảnh nặng")
+
+local quick = card(Effects, 86)
+
+local qt = label(quick, "Dọn nhanh", 12, COLORS.TEXT, true)
+qt.Position = UDim2.fromOffset(13, 9)
+qt.Size = UDim2.new(1, -26, 0, 20)
+
+local qb = button(quick, "🧹 DỌN TẤT CẢ", function()
+    setFeature("PostFX", true)
+    setFeature("Particles", true)
+    setFeature("Trails", true)
+    setFeature("Beams", true)
+    setFeature("FireSmoke", true)
+    notification("Đã dọn hiệu ứng", "Đã tắt các hiệu ứng nặng hiện tại.", "success")
+end, 160)
+
+qb.Position = UDim2.fromOffset(13, 40)
+
+local rb = button(quick, "↺ KHÔI PHỤC", function()
+    restoreAll()
+    notification("Đã khôi phục", "Đồ họa đã trở về trạng thái ban đầu.", "success")
+end, 140)
+
+rb.Position = UDim2.fromOffset(182, 40)
+
+makeToggle(Effects, "ParticleEmitter", "Tắt emitter.", false, function(v)
+    setFeature("Particles", v)
+end)
+
+makeToggle(Effects, "Trail", "Tắt trail.", false, function(v)
+    setFeature("Trails", v)
+end)
+
+makeToggle(Effects, "Beam", "Tắt beam.", false, function(v)
+    setFeature("Beams", v)
+end)
+
+makeToggle(Effects, "Post Processing", "Tắt Bloom, Blur, SunRays, ColorCorrection, DOF.", false, function(v)
+    setFeature("PostFX", v)
+end)
+
+--==================================================
+-- NÂNG CAO
+--==================================================
+
+local Advanced = createPage("Nâng cao")
+section(Advanced, "Nâng cao", "Công cụ kiểm tra và khôi phục")
+
+local scanCard = card(Advanced, 124)
+
+local st = label(scanCard, "Thống kê lần quét gần nhất", 12, COLORS.TEXT, true)
+st.Position = UDim2.fromOffset(13, 9)
+st.Size = UDim2.new(1, -26, 0, 20)
+
+local summary = label(scanCard, "Chưa có dữ liệu.", 9, COLORS.MUTED, false)
+summary.Position = UDim2.fromOffset(13, 33)
+summary.Size = UDim2.new(1, -26, 0, 44)
+summary.TextWrapped = true
+
+local scan = button(scanCard, "🔎 QUÉT LẠI", function()
+    local was = {}
+    for k, v in pairs(FeatureState) do
+        was[k] = v
+    end
+
+    local total = 0
+
+    for feature, enabled in pairs(was) do
+        if enabled then
+            scanAndDisable(feature)
+            total += 1
         end
     end
+
+    summary.Text = string.format(
+        "Đã quét: %d object\nParticle: %d • Trail: %d • Beam: %d • PostFX: %d • Lửa/Khói: %d",
+        Counts.Scanned,
+        Counts.Particles,
+        Counts.Trails,
+        Counts.Beams,
+        Counts.PostFX,
+        Counts.FireSmoke
+    )
+
+    notification("Quét hoàn tất", "Đã cập nhật thống kê tối ưu.", "success")
+end, 130)
+
+scan.Position = UDim2.new(1, -145, 1, -48)
+
+local restoreCard = card(Advanced, 78)
+
+local rt = label(restoreCard, "Khôi phục toàn bộ", 12, COLORS.TEXT, true)
+rt.Position = UDim2.fromOffset(13, 8)
+rt.Size = UDim2.new(1, -170, 0, 20)
+
+local rd = label(restoreCard, "Trả hiệu ứng, bóng đổ và Terrain về trạng thái đã lưu.", 9, COLORS.MUTED, false)
+rd.Position = UDim2.fromOffset(13, 32)
+rd.Size = UDim2.new(1, -170, 0, 22)
+
+local restore = button(restoreCard, "RESTORE", function()
+    restoreAll()
+    notification("Đã khôi phục", "Mọi thay đổi của script đã được hoàn tác.", "success")
+end, 120)
+
+restore.Position = UDim2.new(1, -133, 0.5, -18)
+
+local noteCard = card(Advanced, 70)
+
+local note = label(
+    noteCard,
+    "Không tự ý xoá object gameplay. Script ưu tiên Enabled/thuộc tính hình ảnh để giảm rủi ro lỗi game.",
+    9,
+    COLORS.MUTED,
+    false
 )
 
-Toggle(
-    FPSPage,
-    "Tắt Trail",
-    "Giảm hiệu ứng chuyển động",
-    false,
-    function(v)
-        if v then
-            DisableTrails()
-        else
-            RestoreAll()
-        end
-    end
-)
+note.Position = UDim2.fromOffset(13, 0)
+note.Size = UDim2.new(1, -26, 1, 0)
+note.TextWrapped = true
 
-Toggle(
-    FPSPage,
-    "Tắt Beam",
-    "Giảm hiệu ứng tia",
-    false,
-    function(v)
-        if v then
-            DisableBeams()
-        else
-            RestoreAll()
-        end
-    end
-)
+--==================================================
+-- CÀI ĐẶT
+--==================================================
 
---//====================================================
---// GRAPHICS PAGE
---//====================================================
+local SettingsPage = createPage("Cài đặt")
+section(SettingsPage, "Cài đặt", "Tùy chỉnh menu và thông tin hiển thị")
 
-local Graphics = CreatePage("Đồ họa")
+makeToggle(SettingsPage, "Hiển thị FPS", "Hiện FPS ở trang chủ.", true, function(v)
+    Config.ShowFPS = v
+    FPSValue.Visible = v
+end)
 
-SectionTitle(
-    Graphics,
-    "Đồ họa",
-    "Giảm hiệu ứng hình ảnh để ưu tiên FPS"
-)
+makeToggle(SettingsPage, "Hiển thị Ping", "Hiện ping ở trang chủ.", true, function(v)
+    Config.ShowPing = v
+    PingValue.Visible = v
+end)
 
-Toggle(
-    Graphics,
-    "Tắt Bloom",
-    "Loại bỏ ánh sáng phát sáng",
-    false,
-    function(v)
-        for _, obj in ipairs(Lighting:GetChildren()) do
-            if obj:IsA("BloomEffect") then
-                obj.Enabled = not v
-            end
-        end
-    end
-)
+makeToggle(SettingsPage, "Thông báo", "Hiện thông báo khi thao tác.", true, function(v)
+    Config.Notifications = v
+end)
 
-Toggle(
-    Graphics,
-    "Tắt Blur",
-    "Loại bỏ hiệu ứng mờ",
-    false,
-    function(v)
-        for _, obj in ipairs(Lighting:GetChildren()) do
-            if obj:IsA("BlurEffect") then
-                obj.Enabled = not v
-            end
-        end
-    end
-)
+makeToggle(SettingsPage, "Hoạt ảnh giao diện", "Bật/tắt animation của nút.", true, function(v)
+    Config.Animations = v
+end)
 
-Toggle(
-    Graphics,
-    "Tắt Sun Rays",
-    "Giảm hiệu ứng tia nắng",
-    false,
-    function(v)
-        for _, obj in ipairs(Lighting:GetChildren()) do
-            if obj:IsA("SunRaysEffect") then
-                obj.Enabled = not v
-            end
-        end
-    end
-)
+local about = card(SettingsPage, 100)
 
-Toggle(
-    Graphics,
-    "Tắt Color Correction",
-    "Giảm hậu kỳ màu",
-    false,
-    function(v)
-        for _, obj in ipairs(Lighting:GetChildren()) do
-            if obj:IsA("ColorCorrectionEffect") then
-                obj.Enabled = not v
-            end
-        end
-    end
-)
+local at = label(about, "Delta X - Lag Fix", 14, COLORS.TEXT, true)
+at.Position = UDim2.fromOffset(13, 10)
+at.Size = UDim2.new(1, -26, 0, 22)
 
-Toggle(
-    Graphics,
-    "Tắt Depth Of Field",
-    "Giảm hiệu ứng chiều sâu",
-    false,
-    function(v)
-        for _, obj in ipairs(Lighting:GetChildren()) do
-            if obj:IsA("DepthOfFieldEffect") then
-                obj.Enabled = not v
-            end
-        end
-    end
-)
+local av = label(about, "Phiên bản " .. VERSION .. "\nClient-side performance utility\nKhông có auto farm, aimbot, teleport hay bypass.", 9, COLORS.MUTED, false)
+av.Position = UDim2.fromOffset(13, 35)
+av.Size = UDim2.new(1, -26, 0, 55)
+av.TextWrapped = true
 
---//====================================================
---// EFFECT PAGE
---//====================================================
-
-local Effects = CreatePage("Hiệu ứng")
-
-SectionTitle(
-    Effects,
-    "Hiệu ứng",
-    "Tắt các hiệu ứng không cần thiết"
-)
-
-Toggle(
-    Effects,
-    "Particle Effects",
-    "Tắt ParticleEmitter",
-    false,
-    function(v)
-        if v then
-            DisableParticles()
-        end
-    end
-)
-
-Toggle(
-    Effects,
-    "Trail Effects",
-    "Tắt Trail",
-    false,
-    function(v)
-        if v then
-            DisableTrails()
-        end
-    end
-)
-
-Toggle(
-    Effects,
-    "Beam Effects",
-    "Tắt Beam",
-    false,
-    function(v)
-        if v then
-            DisableBeams()
-        end
-    end
-)
-
-Toggle(
-    Effects,
-    "Post Processing",
-    "Tắt toàn bộ hậu kỳ",
-    false,
-    function(v)
-        if v then
-            DisablePostFX()
-        else
-            EnablePostFX()
-        end
-    end
-)
-
---//====================================================
---// ADVANCED PAGE
---//====================================================
-
-local Advanced = CreatePage("Nâng cao")
-
-SectionTitle(
-    Advanced,
-    "Nâng cao",
-    "Các tùy chọn tối ưu bổ sung"
-)
-
-local Cleanup = Card(Advanced, 100)
-
-local CT = Text(
-    Cleanup,
-    "Dọn hiệu ứng một lần",
-    13,
-    TEXT,
-    true
-)
-
-CT.Position = UDim2.new(0,14,0,12)
-CT.Size = UDim2.new(1,-180,0,22)
-
-local CD = Text(
-    Cleanup,
-    "Quét client và tắt các hiệu ứng nặng hiện tại.",
-    10,
-    MUTED
-)
-
-CD.Position = UDim2.new(0,14,0,38)
-CD.Size = UDim2.new(1,-180,0,30)
-
-local CleanButton = Button(
-    Cleanup,
-    "DỌN NGAY",
-    function()
-        DisablePostFX()
-        DisableParticles()
-        DisableTrails()
-        DisableBeams()
-    end,
-    120
-)
-
-CleanButton.Position = UDim2.new(1,-135,0.5,-19)
-
-local RestoreCard = Card(Advanced, 80)
-
-local RT = Text(
-    RestoreCard,
-    "Khôi phục đồ họa",
-    13,
-    TEXT,
-    true
-)
-
-RT.Position = UDim2.new(0,14,0,10)
-RT.Size = UDim2.new(1,-180,0,22)
-
-local RD = Text(
-    RestoreCard,
-    "Khôi phục những thiết lập đã lưu.",
-    10,
-    MUTED
-)
-
-RD.Position = UDim2.new(0,14,0,35)
-RD.Size = UDim2.new(1,-180,0,20)
-
-local RestoreButton = Button(
-    RestoreCard,
-    "RESTORE",
-    RestoreAll,
-    120
-)
-
-RestoreButton.Position = UDim2.new(1,-135,0.5,-19)
-
---//====================================================
---// SETTINGS PAGE
---//====================================================
-
-local Settings = CreatePage("Cài đặt")
-
-SectionTitle(
-    Settings,
-    "Cài đặt",
-    "Tùy chỉnh giao diện và thông tin"
-)
-
-Toggle(
-    Settings,
-    "Hiển thị FPS",
-    "Hiển thị FPS trên menu",
-    true,
-    function(v)
-        Config.ShowFPS = v
-    end
-)
-
-Toggle(
-    Settings,
-    "Hiển thị Ping",
-    "Hiển thị ping hiện tại",
-    true,
-    function(v)
-        Config.ShowPing = v
-    end
-)
-
-local Info = Card(Settings, 110)
-
-local IT = Text(
-    Info,
-    "Delta X - Lag Fix",
-    15,
-    TEXT,
-    true
-)
-
-IT.Position = UDim2.new(0,14,0,12)
-IT.Size = UDim2.new(1,-28,0,25)
-
-local ID = Text(
-    Info,
-    "Client-side performance utility\nKhông thay đổi gameplay.",
-    10,
-    MUTED
-)
-
-ID.Position = UDim2.new(0,14,0,40)
-ID.Size = UDim2.new(1,-28,0,50)
-
---//====================================================
---// DEFAULT PAGE
---//====================================================
+--==================================================
+-- HIỂN THỊ TRẠNG THÁI
+--==================================================
 
 Pages["Trang chủ"].Visible = true
+SideButtons["Trang chủ"].Button.BackgroundColor3 = Color3.fromRGB(0, 76, 175)
+SideButtons["Trang chủ"].Icon.TextColor3 = COLORS.TEXT
+SideButtons["Trang chủ"].Text.TextColor3 = COLORS.TEXT
 
-SideButtons["Trang chủ"].Button.BackgroundColor3 = Color3.fromRGB(0,80,180)
-SideButtons["Trang chủ"].Icon.TextColor3 = TEXT
-SideButtons["Trang chủ"].Label.TextColor3 = TEXT
+--==================================================
+-- FPS / PING MONITOR
+--==================================================
 
---//====================================================
---// FPS / PING MONITOR
---//====================================================
+local frameCounter = 0
+local elapsed = 0
+local displayedFPS = 60
 
-local frames = 0
-local last = os.clock()
-local currentFPS = 60
+RunService.RenderStepped:Connect(function(dt)
+    frameCounter += 1
+    elapsed += dt
 
-RunService.RenderStepped:Connect(function()
-    frames += 1
+    if elapsed >= 0.75 then
+        local fps = frameCounter / elapsed
 
-    local now = os.clock()
+        -- Giới hạn hiển thị để tránh số đo dị thường từ executor khi cửa sổ/overlay không được render bình thường.
+        displayedFPS = math.clamp(math.floor(fps + 0.5), 1, 999)
 
-    if now - last >= 1 then
-        currentFPS = frames / (now - last)
-        frames = 0
-        last = now
+        FPSValue.Text = tostring(displayedFPS)
 
-        FPSValue.Text = tostring(math.floor(currentFPS + 0.5))
-
-        if currentFPS >= 55 then
-            FPSValue.TextColor3 = GREEN
-        elseif currentFPS >= 30 then
-            FPSValue.TextColor3 = Color3.fromRGB(255,210,70)
+        if displayedFPS >= 55 then
+            FPSValue.TextColor3 = COLORS.GREEN
+        elseif displayedFPS >= 30 then
+            FPSValue.TextColor3 = COLORS.YELLOW
         else
-            FPSValue.TextColor3 = RED
+            FPSValue.TextColor3 = COLORS.RED
         end
 
-        safe(function()
-            local ping = Stats.Network.ServerStatsItem[
-                "Data Ping"
-            ]:GetValueString()
+        if Config.ShowPing then
+            safe(function()
+                local item = Stats.Network.ServerStatsItem["Data Ping"]
+                local value = item:GetValueString()
+                PingValue.Text = value
+            end)
+        end
 
-            PingValue.Text = ping
-        end)
-
-        if Config.FPSBoost then
+        if Config.Optimized then
             StatusValue.Text = "Đang tối ưu"
-            StatusValue.TextColor3 = GREEN
+            StatusValue.TextColor3 = COLORS.GREEN
         else
             StatusValue.Text = "Sẵn sàng"
-            StatusValue.TextColor3 = BLUE2
+            StatusValue.TextColor3 = COLORS.BLUE2
         end
+
+        frameCounter = 0
+        elapsed = 0
     end
 end)
 
---//====================================================
---// FLOATING MINI BUTTON
---//====================================================
+--==================================================
+-- NÚT THU NHỎ
+--==================================================
 
-local Mini = New("TextButton", {
-    Size = UDim2.new(0, 58, 0, 58),
-    Position = UDim2.new(0, 20, 0.5, -29),
-    BackgroundColor3 = Color3.fromRGB(5,18,35),
+local Mini = new("TextButton", {
+    Size = UDim2.fromOffset(56, 56),
+    Position = UDim2.new(0, 18, 0.5, -28),
+    BackgroundColor3 = Color3.fromRGB(5, 19, 36),
     Text = "▶",
-    TextColor3 = BLUE2,
-    TextSize = 24,
+    TextColor3 = COLORS.BLUE2,
+    TextSize = 23,
     Font = Enum.Font.GothamBold,
     Visible = false,
-    AutoButtonColor = false
+    AutoButtonColor = false,
+    Active = true,
 }, ScreenGui)
 
-Corner(Mini, 18)
-Stroke(Mini, BLUE, 0.25, 1)
+corner(Mini, 18)
+stroke(Mini, COLORS.BLUE, 0.25, 1)
 
 Mini.MouseButton1Click:Connect(function()
     Mini.Visible = false
@@ -1156,17 +1191,34 @@ Minimize.MouseButton1Click:Connect(function()
 end)
 
 Close.MouseButton1Click:Connect(function()
-    RestoreAll()
-    ScreenGui:Destroy()
+    restoreAll()
+
+    if DescendantConnection then
+        safe(function() DescendantConnection:Disconnect() end)
+    end
+
+    safe(function() ScreenGui:Destroy() end)
 end)
 
---//====================================================
---// DRAG SYSTEM - MOBILE + PC
---//====================================================
+--==================================================
+-- KÉO MENU: CHUỘT + CẢM ỨNG
+--==================================================
 
 local dragging = false
+local dragInput
 local dragStart
 local startPos
+
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+
+    Main.Position = UDim2.new(
+        startPos.X.Scale,
+        startPos.X.Offset + delta.X,
+        startPos.Y.Scale,
+        startPos.Y.Offset + delta.Y
+    )
+end
 
 Header.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -1184,56 +1236,74 @@ Header.InputBegan:Connect(function(input)
     end
 end)
 
-UserInputService.InputChanged:Connect(function(input)
-    if dragging and (
-        input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch
-    ) then
-
-        local delta = input.Position - dragStart
-
-        Main.Position = UDim2.new(
-            startPos.X.Scale,
-            startPos.X.Offset + delta.X,
-            startPos.Y.Scale,
-            startPos.Y.Offset + delta.Y
-        )
+Header.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
     end
 end)
 
---//====================================================
---// RESPONSIVE MOBILE SIZE
---//====================================================
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        updateDrag(input)
+    end
+end)
 
-local function Resize()
+--==================================================
+-- RESPONSIVE MOBILE
+--==================================================
+
+local function resize()
     local camera = Workspace.CurrentCamera
     if not camera then return end
 
-    local viewport = camera.ViewportSize
+    local vp = camera.ViewportSize
 
-    if viewport.X < 700 then
-        Main.Size = UDim2.new(
-            1, -20,
-            0, math.min(470, viewport.Y - 30)
-        )
+    if vp.X <= 800 then
+        Main.Size = UDim2.new(1, -18, 1, -34)
+        Main.AnchorPoint = Vector2.new(0.5, 0.5)
+        Main.Position = UDim2.new(0.5, 0, 0.5, 0)
 
-        Main.Position = UDim2.new(
-            0.5, 0,
-            0.5, 0
-        )
+        Sidebar.Size = UDim2.new(0, 120, 1, -76)
+        Sidebar.Position = UDim2.fromOffset(8, 68)
 
-        Main.AnchorPoint = Vector2.new(0.5,0.5)
+        for _, data in pairs(SideButtons) do
+            data.Text.Visible = false
+            data.Icon.Position = UDim2.new(0.5, -13, 0, 0)
+        end
+
+        for _, page in pairs(Pages) do
+            page.Position = UDim2.fromOffset(138, 68)
+            page.Size = UDim2.new(1, -146, 1, -76)
+        end
     else
-        Main.AnchorPoint = Vector2.new(0,0)
-        Main.Size = UDim2.new(0,720,0,470)
-        Main.Position = UDim2.new(0.5,-360,0.5,-235)
+        Main.Size = UDim2.fromOffset(720, 480)
+        Main.AnchorPoint = Vector2.new(0, 0)
+        Main.Position = UDim2.new(0.5, -360, 0.5, -240)
+
+        Sidebar.Size = UDim2.new(0, 160, 1, -76)
+        Sidebar.Position = UDim2.fromOffset(10, 68)
+
+        for _, data in pairs(SideButtons) do
+            data.Text.Visible = true
+            data.Icon.Position = UDim2.fromOffset(8, 0)
+        end
+
+        for _, page in pairs(Pages) do
+            page.Position = UDim2.fromOffset(173, 68)
+            page.Size = UDim2.new(1, -182, 1, -76)
+        end
     end
 end
 
 safe(function()
-    Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(Resize)
+    if Workspace.CurrentCamera then
+        Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(resize)
+    end
 end)
 
-Resize()
+resize()
 
-print("Delta X - Lag Fix loaded successfully.")
+notification("Delta X - Lag Fix", "Đã tải bản " .. VERSION .. " thành công.", "success")
+
+print("Delta X - Lag Fix v" .. VERSION .. " loaded.")
