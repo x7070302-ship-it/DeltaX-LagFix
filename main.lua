@@ -22,7 +22,10 @@ local LocalPlayer = Players.LocalPlayer
 -- CẤU HÌNH
 --==================================================
 
-local VERSION = "1.2"
+local VERSION = "1.3"
+local AVATAR_ID = "rbxassetid://74761602389060"
+local BANNER_ID = "rbxassetid://96073305960252"
+
 
 local FPS_TARGET = 120
 local FPSCapEnabled = false
@@ -487,6 +490,18 @@ local Header = new("Frame", {
     BackgroundTransparency = 1,
     Active = true,
 }, Main)
+
+-- Banner artwork supplied by the user.
+local BannerImage = new("ImageLabel", {
+    Size = UDim2.fromOffset(250, 52),
+    Position = UDim2.new(0, 345, 0, 5),
+    BackgroundTransparency = 1,
+    Image = BANNER_ID,
+    ScaleType = Enum.ScaleType.Crop,
+    ImageTransparency = 0.06,
+    ZIndex = 0,
+}, Header)
+corner(BannerImage, 12)
 
 local Logo = new("Frame", {
     Size = UDim2.fromOffset(42, 42),
@@ -1236,21 +1251,21 @@ end)
 -- NÚT THU NHỎ
 --==================================================
 
-local Mini = new("TextButton", {
-    Size = UDim2.fromOffset(56, 56),
-    Position = UDim2.new(0, 18, 0.5, -28),
+local Mini = new("ImageButton", {
+    Size = UDim2.fromOffset(68, 68),
+    Position = UDim2.new(0, 18, 0.5, -34),
     BackgroundColor3 = Color3.fromRGB(5, 19, 36),
-    Text = "▶",
-    TextColor3 = COLORS.BLUE2,
-    TextSize = 23,
-    Font = Enum.Font.GothamBold,
+    BackgroundTransparency = 0.08,
+    Image = AVATAR_ID,
+    ScaleType = Enum.ScaleType.Crop,
+    ImageTransparency = 0,
     Visible = false,
     AutoButtonColor = false,
     Active = true,
 }, ScreenGui)
 
-corner(Mini, 18)
-stroke(Mini, COLORS.BLUE, 0.25, 1)
+corner(Mini, 1)
+stroke(Mini, COLORS.BLUE, 0.12, 2)
 
 Mini.MouseButton1Click:Connect(function()
     Mini.Visible = false
@@ -1399,3 +1414,23 @@ resize()
 notification("Delta X - Lag Fix", "Đã tải bản " .. VERSION .. " thành công.", "success")
 
 print("Delta X - Lag Fix v" .. VERSION .. " loaded.")
+
+-- Apply uploaded Delta X artwork after UI is built.
+task.defer(function()
+    pcall(function()
+        local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+        if not pg then return end
+        for _, obj in ipairs(pg:GetDescendants()) do
+            if obj:IsA("ImageButton") or obj:IsA("ImageLabel") then
+                local n = string.lower(obj.Name)
+                if n == "avatar" or n == "mini" or n == "floating" or n == "dxtoggle" then
+                    obj.Image = AVATAR_ID
+                    obj.ScaleType = Enum.ScaleType.Crop
+                elseif n == "banner" or n == "bannerimage" or n == "headerimage" then
+                    obj.Image = BANNER_ID
+                    obj.ScaleType = Enum.ScaleType.Crop
+                end
+            end
+        end
+    end)
+end)
