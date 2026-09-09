@@ -1,6 +1,6 @@
 --[[
     Delta X - Lag Fix
-    Phiên bản: 1.2
+    Phiên bản: 1.4
     Tác giả: Minh Tiến
     Client-side FPS / Graphics Optimizer
     Chỉ tối ưu đồ họa và giao diện, không tự động chơi game.
@@ -22,9 +22,9 @@ local LocalPlayer = Players.LocalPlayer
 -- CẤU HÌNH
 --==================================================
 
-local VERSION = "1.3"
-local AVATAR_ID = "rbxassetid://74761602389060"
-local BANNER_ID = "rbxassetid://96073305960252"
+local VERSION = "1.4"
+local AVATAR_ID = "rbxassetid://118787890588648"
+local BANNER_ID = "rbxassetid://117945200016708"
 
 
 local FPS_TARGET = 120
@@ -471,8 +471,8 @@ local COLORS = {
 }
 
 local Main = new("Frame", {
-    Size = UDim2.fromOffset(720, 480),
-    Position = UDim2.new(0.5, -360, 0.5, -240),
+    Size = UDim2.fromOffset(640, 430),
+    Position = UDim2.new(0.5, -320, 0.5, -215),
     BackgroundColor3 = COLORS.BG,
     BorderSizePixel = 0,
     Active = true,
@@ -480,6 +480,9 @@ local Main = new("Frame", {
 
 corner(Main, 14)
 stroke(Main, Color3.fromRGB(0, 120, 255), 0.25, 1)
+
+-- Thu gọn giao diện để không chiếm gần hết màn hình.
+local MainScale = new("UIScale", {Scale = 0.82}, Main)
 
 --==================================================
 -- HEADER
@@ -1252,8 +1255,8 @@ end)
 --==================================================
 
 local Mini = new("ImageButton", {
-    Size = UDim2.fromOffset(68, 68),
-    Position = UDim2.new(0, 18, 0.5, -34),
+    Size = UDim2.fromOffset(54, 54),
+    Position = UDim2.new(0, 14, 0.5, -27),
     BackgroundColor3 = Color3.fromRGB(5, 19, 36),
     BackgroundTransparency = 0.08,
     Image = AVATAR_ID,
@@ -1365,13 +1368,19 @@ local function resize()
     if not camera then return end
 
     local vp = camera.ViewportSize
+    local mobile = vp.X <= 800
 
-    if vp.X <= 800 then
-        Main.Size = UDim2.new(1, -18, 1, -34)
-        Main.AnchorPoint = Vector2.new(0.5, 0.5)
-        Main.Position = UDim2.new(0.5, 0, 0.5, 0)
+    -- Tỉ lệ vừa phải: menu không phủ kín màn hình.
+    local scale = mobile and math.clamp(math.min((vp.X - 24) / 640, (vp.Y - 110) / 430), 0.62, 0.78)
+        or math.clamp(math.min((vp.X - 80) / 640, (vp.Y - 120) / 430), 0.78, 0.92)
 
-        Sidebar.Size = UDim2.new(0, 120, 1, -76)
+    MainScale.Scale = scale
+    Main.Size = UDim2.fromOffset(640, 430)
+    Main.AnchorPoint = Vector2.new(0.5, 0.5)
+    Main.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+    if mobile then
+        Sidebar.Size = UDim2.new(0, 112, 1, -76)
         Sidebar.Position = UDim2.fromOffset(8, 68)
 
         for _, data in pairs(SideButtons) do
@@ -1380,15 +1389,11 @@ local function resize()
         end
 
         for _, page in pairs(Pages) do
-            page.Position = UDim2.fromOffset(138, 68)
-            page.Size = UDim2.new(1, -146, 1, -76)
+            page.Position = UDim2.fromOffset(130, 68)
+            page.Size = UDim2.new(1, -138, 1, -76)
         end
     else
-        Main.Size = UDim2.fromOffset(720, 480)
-        Main.AnchorPoint = Vector2.new(0, 0)
-        Main.Position = UDim2.new(0.5, -360, 0.5, -240)
-
-        Sidebar.Size = UDim2.new(0, 160, 1, -76)
+        Sidebar.Size = UDim2.new(0, 145, 1, -76)
         Sidebar.Position = UDim2.fromOffset(10, 68)
 
         for _, data in pairs(SideButtons) do
@@ -1397,8 +1402,8 @@ local function resize()
         end
 
         for _, page in pairs(Pages) do
-            page.Position = UDim2.fromOffset(173, 68)
-            page.Size = UDim2.new(1, -182, 1, -76)
+            page.Position = UDim2.fromOffset(158, 68)
+            page.Size = UDim2.new(1, -167, 1, -76)
         end
     end
 end
