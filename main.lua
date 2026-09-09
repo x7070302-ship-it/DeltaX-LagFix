@@ -22,7 +22,7 @@ local LocalPlayer = Players.LocalPlayer
 -- CẤU HÌNH
 --==================================================
 
-local VERSION = "1.6"
+local VERSION = "1.7"
 local AVATAR_ID = "rbxassetid://118787890588648"
 local BANNER_ID = "rbxassetid://117945200016708"
 
@@ -470,26 +470,49 @@ local COLORS = {
     RED = Color3.fromRGB(255, 70, 85),
 }
 
+local DEFAULT_W, DEFAULT_H = 560, 390
+local MIN_W, MIN_H = 350, 290
+local MAX_W, MAX_H = 780, 540
+
 local Main = new("Frame", {
-    Size = UDim2.fromOffset(640, 430),
-    Position = UDim2.new(0.5, -320, 0.5, -215),
+    Size = UDim2.fromOffset(DEFAULT_W, DEFAULT_H),
+    Position = UDim2.new(0.5, -DEFAULT_W / 2, 0.5, -DEFAULT_H / 2),
     BackgroundColor3 = COLORS.BG,
     BorderSizePixel = 0,
     Active = true,
+    ClipsDescendants = false,
 }, ScreenGui)
 
-corner(Main, 14)
-stroke(Main, Color3.fromRGB(0, 120, 255), 0.25, 1)
+corner(Main, 16)
+stroke(Main, Color3.fromRGB(0, 130, 255), 0.18, 1)
 
--- Thu gọn giao diện để không chiếm gần hết màn hình.
-local MainScale = new("UIScale", {Scale = 0.76}, Main)
+local MainGlass = new("Frame", {
+    Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = Color3.fromRGB(8, 18, 34),
+    BackgroundTransparency = 0.18,
+    BorderSizePixel = 0,
+    Active = false,
+    ZIndex = 0,
+}, Main)
+corner(MainGlass, 16)
+
+local MainHighlight = new("Frame", {
+    Size = UDim2.new(1, -4, 0, 2),
+    Position = UDim2.fromOffset(2, 2),
+    BackgroundColor3 = COLORS.BLUE2,
+    BackgroundTransparency = 0.52,
+    BorderSizePixel = 0,
+    Active = false,
+    ZIndex = 1,
+}, Main)
+corner(MainHighlight, 5)
 
 --==================================================
 -- HEADER
 --==================================================
 
 local Header = new("Frame", {
-    Size = UDim2.new(1, 0, 0, 62),
+    Size = UDim2.new(1, 0, 0, 84),
     BackgroundTransparency = 1,
     Active = true,
 }, Main)
@@ -497,12 +520,12 @@ local Header = new("Frame", {
 -- Banner artwork supplied by the user.
 local BannerImage = new("ImageLabel", {
     Name = "BannerImage",
-    Size = UDim2.new(1, -10, 1, -10),
-    Position = UDim2.fromOffset(5, 5),
+    Size = UDim2.new(1, -12, 1, -12),
+    Position = UDim2.fromOffset(6, 6),
     BackgroundTransparency = 1,
     Image = BANNER_ID,
     ScaleType = Enum.ScaleType.Crop,
-    ImageTransparency = 0.18,
+    ImageTransparency = 0.08,
     ZIndex = 0,
 }, Header)
 corner(BannerImage, 12)
@@ -527,39 +550,40 @@ local BannerGradient = new("UIGradient", {
     }),
 }, BannerGlass)
 
-local Logo = new("Frame", {
-    Size = UDim2.fromOffset(42, 42),
-    Position = UDim2.fromOffset(12, 10),
-    BackgroundColor3 = Color3.fromRGB(0, 83, 190),
+local Logo = new("ImageLabel", {
+    Size = UDim2.fromOffset(48, 48),
+    Position = UDim2.fromOffset(12, 12),
+    BackgroundColor3 = Color3.fromRGB(0, 70, 160),
+    BackgroundTransparency = 0.08,
+    Image = AVATAR_ID,
+    ScaleType = Enum.ScaleType.Crop,
+    ImageTransparency = 0,
+    BorderSizePixel = 0,
+    ZIndex = 3,
 }, Header)
 
-corner(Logo, 11)
-
-local LogoText = label(Logo, "▶", 24, COLORS.TEXT, true)
-LogoText.Size = UDim2.fromScale(1, 1)
-LogoText.TextXAlignment = Enum.TextXAlignment.Center
-Logo.ZIndex = 3
-LogoText.ZIndex = 4
+corner(Logo, 999)
+stroke(Logo, COLORS.BLUE2, 0.10, 2)
 
 local Title = label(Header, "Delta X - Lag Fix", 18, COLORS.TEXT, true)
-Title.Position = UDim2.fromOffset(65, 7)
+Title.Position = UDim2.fromOffset(72, 13)
 Title.Size = UDim2.new(0, 300, 0, 24)
 Title.ZIndex = 3
 
 local Subtitle = label(Header, "Tối ưu hiệu suất • Mượt hơn • Nhẹ hơn", 10, COLORS.MUTED, false)
-Subtitle.Position = UDim2.fromOffset(65, 31)
+Subtitle.Position = UDim2.fromOffset(72, 39)
 Subtitle.Size = UDim2.new(0, 330, 0, 18)
 Subtitle.ZIndex = 3
 
 local Version = label(Header, "v" .. VERSION, 10, COLORS.BLUE2, true)
-Version.Position = UDim2.new(1, -120, 0, 10)
+Version.Position = UDim2.new(1, -120, 0, 14)
 Version.Size = UDim2.fromOffset(35, 22)
 Version.TextXAlignment = Enum.TextXAlignment.Right
 Version.ZIndex = 3
 
 local Minimize = new("TextButton", {
     Size = UDim2.fromOffset(30, 30),
-    Position = UDim2.new(1, -72, 0, 9),
+    Position = UDim2.new(1, -72, 0, 12),
     BackgroundColor3 = COLORS.PANEL2,
     Text = "—",
     TextColor3 = COLORS.TEXT,
@@ -573,7 +597,7 @@ Minimize.ZIndex = 4
 
 local Close = new("TextButton", {
     Size = UDim2.fromOffset(30, 30),
-    Position = UDim2.new(1, -36, 0, 9),
+    Position = UDim2.new(1, -36, 0, 12),
     BackgroundColor3 = COLORS.PANEL2,
     Text = "×",
     TextColor3 = COLORS.TEXT,
@@ -585,13 +609,45 @@ local Close = new("TextButton", {
 corner(Close, 8)
 Close.ZIndex = 4
 
+local ProfilePill = new("Frame", {
+    Size = UDim2.fromOffset(140, 44),
+    Position = UDim2.new(1, -225, 0, 14),
+    BackgroundColor3 = Color3.fromRGB(13, 31, 52),
+    BackgroundTransparency = 0.28,
+    BorderSizePixel = 0,
+    ZIndex = 3,
+}, Header)
+corner(ProfilePill, 20)
+stroke(ProfilePill, COLORS.BLUE, 0.55, 1)
+
+local ProfileIcon = new("ImageLabel", {
+    Size = UDim2.fromOffset(32, 32),
+    Position = UDim2.fromOffset(6, 6),
+    BackgroundColor3 = Color3.fromRGB(0, 70, 150),
+    Image = AVATAR_ID,
+    ScaleType = Enum.ScaleType.Crop,
+    BorderSizePixel = 0,
+    ZIndex = 4,
+}, ProfilePill)
+corner(ProfileIcon, 999)
+
+local ProfileText = label(ProfilePill, "Minh Tiến", 10, COLORS.TEXT, true)
+ProfileText.Position = UDim2.fromOffset(45, 5)
+ProfileText.Size = UDim2.fromOffset(82, 16)
+ProfileText.ZIndex = 4
+
+local ProfileSub = label(ProfilePill, "Liquid Glass • v" .. VERSION, 8, COLORS.MUTED, false)
+ProfileSub.Position = UDim2.fromOffset(45, 21)
+ProfileSub.Size = UDim2.fromOffset(90, 14)
+ProfileSub.ZIndex = 4
+
 --==================================================
 -- SIDEBAR
 --==================================================
 
 local Sidebar = new("Frame", {
     Size = UDim2.new(0, 160, 1, -76),
-    Position = UDim2.fromOffset(10, 68),
+    Position = UDim2.fromOffset(10, 92),
     BackgroundColor3 = Color3.fromRGB(6, 14, 25),
     BorderSizePixel = 0,
 }, Main)
@@ -609,6 +665,34 @@ local SideLayout = new("UIListLayout", {
     SortOrder = Enum.SortOrder.LayoutOrder,
 }, Sidebar)
 
+local SideProfile = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 54),
+    BackgroundColor3 = Color3.fromRGB(11, 28, 47),
+    BackgroundTransparency = 0.24,
+    BorderSizePixel = 0,
+    LayoutOrder = 0,
+}, Sidebar)
+corner(SideProfile, 12)
+stroke(SideProfile, COLORS.BLUE, 0.62, 1)
+
+local SideAvatar = new("ImageLabel", {
+    Size = UDim2.fromOffset(38, 38),
+    Position = UDim2.fromOffset(7, 8),
+    BackgroundColor3 = Color3.fromRGB(0, 70, 150),
+    Image = AVATAR_ID,
+    ScaleType = Enum.ScaleType.Crop,
+    BorderSizePixel = 0,
+}, SideProfile)
+corner(SideAvatar, 999)
+
+local SideName = label(SideProfile, "Minh Tiến", 10, COLORS.TEXT, true)
+SideName.Position = UDim2.fromOffset(52, 8)
+SideName.Size = UDim2.new(1, -60, 0, 18)
+
+local SideDesc = label(SideProfile, "Tối ưu • Mượt hơn", 8, COLORS.MUTED, false)
+SideDesc.Position = UDim2.fromOffset(52, 27)
+SideDesc.Size = UDim2.new(1, -60, 0, 16)
+
 local Pages = {}
 local SideButtons = {}
 local CurrentPage = "Trang chủ"
@@ -617,7 +701,7 @@ local function createPage(name)
     local page = new("ScrollingFrame", {
         Name = name,
         Size = UDim2.new(1, -182, 1, -76),
-        Position = UDim2.fromOffset(173, 68),
+        Position = UDim2.fromOffset(173, 92),
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         ScrollBarThickness = 3,
@@ -884,53 +968,308 @@ end
 --==================================================
 
 local Home = createPage("Trang chủ")
-section(Home, "Tối ưu Roblox", "Giảm tải đồ họa • Theo dõi FPS • Khôi phục dễ dàng")
+section(Home, "Tối ưu hiệu năng", "Liquid Glass • iOS 27 • Tối ưu client-side")
 
-local Hero = card(Home, 142)
+local PresetPanel = card(Home, 118)
 
-local heroIcon = label(Hero, "⚡", 36, COLORS.BLUE2, true)
-heroIcon.Position = UDim2.fromOffset(18, 20)
-heroIcon.Size = UDim2.fromOffset(65, 60)
-heroIcon.TextXAlignment = Enum.TextXAlignment.Center
+local presetTitle = label(PresetPanel, "⚡ Preset nhanh", 13, COLORS.TEXT, true)
+presetTitle.Position = UDim2.fromOffset(13, 8)
+presetTitle.Size = UDim2.new(1, -26, 0, 20)
 
-local heroTitle = label(Hero, "Sẵn sàng tối ưu", 17, COLORS.TEXT, true)
-heroTitle.Position = UDim2.fromOffset(95, 18)
-heroTitle.Size = UDim2.new(1, -110, 0, 25)
+local presetSub = label(PresetPanel, "Chọn chế độ tối ưu phù hợp với thiết bị.", 9, COLORS.MUTED, false)
+presetSub.Position = UDim2.fromOffset(13, 29)
+presetSub.Size = UDim2.new(1, -26, 0, 18)
 
-local heroDesc = label(Hero, "Tắt hiệu ứng nặng và giảm tải render mà không xoá object.", 9, COLORS.MUTED, false)
-heroDesc.Position = UDim2.fromOffset(95, 48)
-heroDesc.Size = UDim2.new(1, -110, 0, 34)
+local presetRow = new("Frame", {
+    Size = UDim2.new(1, -20, 0, 62),
+    Position = UDim2.fromOffset(10, 49),
+    BackgroundTransparency = 1,
+}, PresetPanel)
 
-local Optimize = button(Hero, "⚡ BẬT TỐI ƯU", function()
-    local supported = optimize120()
-    local msg = supported and "Đã bật tối ưu hiệu năng + mục tiêu 120 FPS." or "Đã tối ưu đồ họa; môi trường hiện tại không hỗ trợ đặt cap 120 FPS."
-    notification("Đã tối ưu", msg, supported and "success" or "warning")
-end, 180)
+new("UIListLayout", {
+    FillDirection = Enum.FillDirection.Horizontal,
+    Padding = UDim.new(0, 7),
+}, presetRow)
 
-Optimize.Position = UDim2.fromOffset(95, 96)
+local function presetButton(textValue, iconText, descValue, cb)
+    local b = new("TextButton", {
+        Size = UDim2.new(0.25, -6, 1, 0),
+        BackgroundColor3 = Color3.fromRGB(10, 29, 52),
+        BackgroundTransparency = 0.18,
+        Text = "",
+        AutoButtonColor = false,
+    }, presetRow)
+    corner(b, 11)
+    stroke(b, COLORS.BLUE, 0.62, 1)
 
-local StatsRow = new("Frame", {
-    Size = UDim2.new(1, 0, 0, 84),
+    local i = label(b, iconText, 17, COLORS.BLUE2, true)
+    i.Position = UDim2.fromOffset(7, 8)
+    i.Size = UDim2.fromOffset(28, 22)
+    i.TextXAlignment = Enum.TextXAlignment.Center
+
+    local t = label(b, textValue, 10, COLORS.TEXT, true)
+    t.Position = UDim2.fromOffset(37, 7)
+    t.Size = UDim2.new(1, -42, 0, 18)
+
+    local d = label(b, descValue, 7, COLORS.MUTED, false)
+    d.Position = UDim2.fromOffset(37, 27)
+    d.Size = UDim2.new(1, -42, 0, 27)
+    d.TextWrapped = true
+
+    b.MouseEnter:Connect(function()
+        tween(b, TweenInfo.new(0.12), {
+            BackgroundColor3 = Color3.fromRGB(0, 75, 165),
+            BackgroundTransparency = 0.05,
+        })
+    end)
+
+    b.MouseLeave:Connect(function()
+        tween(b, TweenInfo.new(0.12), {
+            BackgroundColor3 = Color3.fromRGB(10, 29, 52),
+            BackgroundTransparency = 0.18,
+        })
+    end)
+
+    b.MouseButton1Click:Connect(function()
+        safe(cb)
+    end)
+    return b
+end
+
+presetButton("Siêu nhẹ", "✦", "Máy yếu", function()
+    applyPreset("Siêu nhẹ")
+    notification("Đã chọn preset", "Siêu nhẹ đang hoạt động.", "success")
+end)
+
+presetButton("Cân bằng", "⚖", "Khuyến nghị", function()
+    applyPreset("Cân bằng")
+    notification("Đã chọn preset", "Cân bằng đang hoạt động.", "success")
+end)
+
+presetButton("Hiệu năng", "🚀", "Ưu tiên FPS", function()
+    applyPreset("Hiệu năng")
+    notification("Đã chọn preset", "Hiệu năng + mục tiêu 120 FPS.", "success")
+end)
+
+presetButton("Tùy chỉnh", "⚙", "Tự chọn", function()
+    for _, p in pairs(Pages) do p.Visible = false end
+    Pages["FPS Boost"].Visible = true
+    CurrentPage = "FPS Boost"
+end)
+
+local OptimizeRow = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 204),
     BackgroundTransparency = 1,
 }, Home)
 
-local statsLayout = new("UIListLayout", {
+new("UIListLayout", {
     FillDirection = Enum.FillDirection.Horizontal,
     Padding = UDim.new(0, 8),
-    SortOrder = Enum.SortOrder.LayoutOrder,
+}, OptimizeRow)
+
+local OptLeft = new("Frame", {
+    Size = UDim2.new(0.65, -4, 1, 0),
+    BackgroundColor3 = COLORS.PANEL,
+    BackgroundTransparency = 0.08,
+    BorderSizePixel = 0,
+}, OptimizeRow)
+corner(OptLeft, 12)
+stroke(OptLeft, COLORS.BLUE, 0.58, 1)
+
+local lt = label(OptLeft, "🚀 Tối ưu hiệu năng", 13, COLORS.TEXT, true)
+lt.Position = UDim2.fromOffset(12, 10)
+lt.Size = UDim2.new(1, -24, 0, 22)
+
+local ld = label(OptLeft, "Giảm lag • Tăng FPS • Giảm tải hiệu ứng", 8, COLORS.MUTED, false)
+ld.Position = UDim2.fromOffset(12, 30)
+ld.Size = UDim2.new(1, -24, 0, 18)
+
+local optButtons = new("Frame", {
+    Size = UDim2.new(1, -18, 1, -58),
+    Position = UDim2.fromOffset(9, 52),
+    BackgroundTransparency = 1,
+}, OptLeft)
+
+new("UIListLayout", {
+    Padding = UDim.new(0, 5),
+}, optButtons)
+
+local function addOptRow(parent, titleText, descText, cb)
+    local row = new("TextButton", {
+        Size = UDim2.new(1, 0, 0, 39),
+        BackgroundColor3 = Color3.fromRGB(12, 31, 53),
+        BackgroundTransparency = 0.16,
+        Text = "",
+        AutoButtonColor = false,
+    }, parent)
+    corner(row, 9)
+    stroke(row, COLORS.BLUE, 0.78, 1)
+
+    local t = label(row, titleText, 9, COLORS.TEXT, true)
+    t.Position = UDim2.fromOffset(10, 3)
+    t.Size = UDim2.new(1, -65, 0, 17)
+
+    local d = label(row, descText, 7, COLORS.MUTED, false)
+    d.Position = UDim2.fromOffset(10, 19)
+    d.Size = UDim2.new(1, -65, 0, 14)
+
+    local dot = new("Frame", {
+        Size = UDim2.fromOffset(22, 22),
+        Position = UDim2.new(1, -31, 0.5, -11),
+        BackgroundColor3 = COLORS.BLUE,
+        BorderSizePixel = 0,
+    }, row)
+    corner(dot, 999)
+
+    row.MouseButton1Click:Connect(function()
+        safe(function() cb(dot) end)
+    end)
+end
+
+addOptRow(optButtons, "Tăng FPS tối đa (120 FPS)", "Dùng 120 FPS nếu môi trường hỗ trợ.", function(dot)
+    local supported = optimize120()
+    dot.BackgroundColor3 = supported and COLORS.GREEN or COLORS.YELLOW
+    notification("Tối ưu FPS", supported and "Mục tiêu 120 FPS đã được đặt." or "Đã tối ưu đồ họa; không có bộ giới hạn FPS.", supported and "success" or "warning")
+end)
+
+addOptRow(optButtons, "Tự động dọn effect", "Xử lý Particle / Trail / Beam mới.", function(dot)
+    setFeature("Particles", true)
+    setFeature("Trails", true)
+    setFeature("Beams", true)
+    setFeature("FireSmoke", true)
+    dot.BackgroundColor3 = COLORS.GREEN
+    notification("Đã dọn effect", "Các hiệu ứng nặng được giảm.", "success")
+end)
+
+addOptRow(optButtons, "Tắt hậu kỳ", "Bloom / Blur / SunRays / DOF.", function(dot)
+    setFeature("PostFX", true)
+    dot.BackgroundColor3 = COLORS.GREEN
+    notification("Đã tắt hậu kỳ", "Post Processing đã được tắt.", "success")
+end)
+
+addOptRow(optButtons, "Tắt bóng đổ", "Giảm tải render ánh sáng.", function(dot)
+    setFeature("Shadows", true)
+    dot.BackgroundColor3 = COLORS.GREEN
+    notification("Đã tắt bóng đổ", "Shadows đã được giảm.", "success")
+end)
+
+local QuickPanel = new("Frame", {
+    Size = UDim2.new(0.35, -4, 1, 0),
+    BackgroundColor3 = COLORS.PANEL,
+    BackgroundTransparency = 0.08,
+    BorderSizePixel = 0,
+}, OptimizeRow)
+corner(QuickPanel, 12)
+stroke(QuickPanel, COLORS.BLUE, 0.58, 1)
+
+local qt = label(QuickPanel, "✦ Tiện ích nhanh", 13, COLORS.TEXT, true)
+qt.Position = UDim2.fromOffset(12, 10)
+qt.Size = UDim2.new(1, -24, 0, 22)
+
+local qd = label(QuickPanel, "Một chạm để thao tác.", 8, COLORS.MUTED, false)
+qd.Position = UDim2.fromOffset(12, 30)
+qd.Size = UDim2.new(1, -24, 0, 18)
+
+local quickGrid = new("Frame", {
+    Size = UDim2.new(1, -16, 1, -58),
+    Position = UDim2.fromOffset(8, 52),
+    BackgroundTransparency = 1,
+}, QuickPanel)
+
+new("UIGridLayout", {
+    CellSize = UDim2.new(0.5, -4, 0, 50),
+    CellPadding = UDim2.fromOffset(7, 7),
+    FillDirectionMaxCells = 2,
+}, quickGrid)
+
+local function utilityButton(parent, titleText, subText, cb)
+    local b = new("TextButton", {
+        BackgroundColor3 = Color3.fromRGB(10, 30, 53),
+        BackgroundTransparency = 0.18,
+        Text = "",
+        AutoButtonColor = false,
+    }, parent)
+    corner(b, 10)
+    stroke(b, COLORS.BLUE, 0.75, 1)
+
+    local i = label(b, "●", 13, COLORS.BLUE2, true)
+    i.Position = UDim2.fromOffset(7, 6)
+    i.Size = UDim2.fromOffset(20, 18)
+    i.TextXAlignment = Enum.TextXAlignment.Center
+
+    local t = label(b, titleText, 8, COLORS.TEXT, true)
+    t.Position = UDim2.fromOffset(28, 4)
+    t.Size = UDim2.new(1, -32, 0, 17)
+
+    local d = label(b, subText, 6, COLORS.MUTED, false)
+    d.Position = UDim2.fromOffset(28, 22)
+    d.Size = UDim2.new(1, -32, 0, 20)
+    d.TextWrapped = true
+
+    b.MouseButton1Click:Connect(function() safe(cb) end)
+end
+
+utilityButton(quickGrid, "Tăng FPS", "Tối ưu tối đa", function()
+    optimize120()
+    notification("Tăng FPS", "Đã áp dụng tối ưu hiệu năng.", "success")
+end)
+
+utilityButton(quickGrid, "Dọn effect", "Particle / Trail / Beam", function()
+    setFeature("Particles", true)
+    setFeature("Trails", true)
+    setFeature("Beams", true)
+    notification("Dọn effect", "Đã làm sạch hiệu ứng.", "success")
+end)
+
+utilityButton(quickGrid, "Quét lại", "Thống kê client", function()
+    local active = 0
+    for feature, enabled in pairs(FeatureState) do
+        if enabled then
+            scanAndDisable(feature)
+            active += 1
+        end
+    end
+    notification("Đã quét", tostring(active) .. " nhóm tối ưu đang hoạt động.", "success")
+end)
+
+utilityButton(quickGrid, "Khôi phục", "Hoàn tác thay đổi", function()
+    restoreAll()
+    setFPSCap120(false)
+    notification("Khôi phục", "Đã hoàn tác thay đổi.", "success")
+end)
+
+utilityButton(quickGrid, "120 FPS", "Nếu môi trường hỗ trợ", function()
+    local ok = setFPSCap120(true)
+    notification("120 FPS", ok and "Đã đặt cap 120 FPS." or "Môi trường không hỗ trợ setfpscap.", ok and "success" or "warning")
+end)
+
+utilityButton(quickGrid, "Cài đặt", "Tùy chỉnh", function()
+    for _, p in pairs(Pages) do p.Visible = false end
+    Pages["Cài đặt"].Visible = true
+    CurrentPage = "Cài đặt"
+end)
+
+local StatsRow = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 64),
+    BackgroundTransparency = 1,
+}, Home)
+
+new("UIListLayout", {
+    FillDirection = Enum.FillDirection.Horizontal,
+    Padding = UDim.new(0, 8),
 }, StatsRow)
 
 local function statCard(titleText)
-    local c = card(StatsRow, 84)
+    local c = card(StatsRow, 64)
     c.Size = UDim2.new(1/3, -6, 1, 0)
 
-    local t = label(c, titleText, 9, COLORS.MUTED, true)
-    t.Position = UDim2.fromOffset(11, 8)
-    t.Size = UDim2.new(1, -22, 0, 18)
+    local t = label(c, titleText, 8, COLORS.MUTED, true)
+    t.Position = UDim2.fromOffset(9, 6)
+    t.Size = UDim2.new(1, -18, 0, 16)
 
-    local v = label(c, "--", 19, COLORS.GREEN, true)
-    v.Position = UDim2.fromOffset(11, 30)
-    v.Size = UDim2.new(1, -22, 0, 30)
+    local v = label(c, "--", 16, COLORS.GREEN, true)
+    v.Position = UDim2.fromOffset(9, 24)
+    v.Size = UDim2.new(1, -18, 0, 26)
 
     return v
 end
@@ -938,11 +1277,6 @@ end
 local FPSValue = statCard("FPS")
 local PingValue = statCard("PING")
 local StatusValue = statCard("TRẠNG THÁI")
-
-local InfoCard = card(Home, 58)
-local info = label(InfoCard, "Mẹo: dùng “Cân bằng” để giảm hiệu ứng nhưng vẫn giữ hình ảnh.", 9, COLORS.MUTED, false)
-info.Position = UDim2.fromOffset(12, 0)
-info.Size = UDim2.new(1, -24, 1, 0)
 
 --==================================================
 -- FPS BOOST
@@ -1279,50 +1613,58 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 --==================================================
--- NÚT THU NHỎ
+-- NÚT AVATAR BẬT / TẮT MENU
 --==================================================
 
 local Mini = new("ImageButton", {
-    Size = UDim2.fromOffset(50, 50),
-    Position = UDim2.new(0, 12, 0.5, -25),
-    BackgroundColor3 = Color3.fromRGB(5, 19, 36),
-    BackgroundTransparency = 0.08,
+    Size = UDim2.fromOffset(58, 58),
+    Position = UDim2.new(1, -82, 1, -110),
+    BackgroundColor3 = Color3.fromRGB(6, 20, 38),
+    BackgroundTransparency = 0.02,
     Image = AVATAR_ID,
     ScaleType = Enum.ScaleType.Crop,
     ImageTransparency = 0,
-    Visible = false,
+    Visible = true,
     AutoButtonColor = false,
     Active = true,
+    ZIndex = 100,
 }, ScreenGui)
 
-corner(Mini, 1)
-stroke(Mini, COLORS.BLUE2, 0.08, 2)
+corner(Mini, 999)
+stroke(Mini, COLORS.BLUE2, 0.03, 2)
 
--- Vòng sáng nhẹ quanh nút nổi.
-local MiniGlow = new("Frame", {
-    Name = "MiniGlow",
+local MiniRing = new("Frame", {
+    Name = "MiniRing",
     Size = UDim2.new(1, 10, 1, 10),
     Position = UDim2.fromOffset(-5, -5),
     BackgroundTransparency = 1,
     Active = false,
-    ZIndex = 0,
+    ZIndex = 99,
 }, Mini)
-corner(MiniGlow, 999)
-stroke(MiniGlow, COLORS.BLUE, 0.55, 2)
+corner(MiniRing, 999)
+stroke(MiniRing, COLORS.BLUE, 0.55, 2)
+
+local MiniDot = new("Frame", {
+    Size = UDim2.fromOffset(9, 9),
+    Position = UDim2.new(1, -12, 0, 4),
+    BackgroundColor3 = COLORS.GREEN,
+    BorderSizePixel = 0,
+    ZIndex = 102,
+}, Mini)
+corner(MiniDot, 999)
 
 local miniWasDragged = false
+
 Mini.MouseButton1Click:Connect(function()
     if miniWasDragged then
         miniWasDragged = false
         return
     end
-    Mini.Visible = false
-    Main.Visible = true
+    Main.Visible = not Main.Visible
 end)
 
 Minimize.MouseButton1Click:Connect(function()
     Main.Visible = false
-    Mini.Visible = true
 end)
 
 Close.MouseButton1Click:Connect(function()
@@ -1336,28 +1678,8 @@ Close.MouseButton1Click:Connect(function()
     safe(function() ScreenGui:Destroy() end)
 end)
 
--- Nút nổi cũng kéo được khi menu đang thu nhỏ.
-do
-    local miniDragging, miniStart, miniPos = false, nil, nil
-    Mini.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            miniDragging = true; miniStart = input.Position; miniPos = Mini.Position
-        end
-    end)
-    Mini.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then miniDragging = false end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if miniDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local d = input.Position - miniStart
-            if math.abs(d.X) > 6 or math.abs(d.Y) > 6 then miniWasDragged = true end
-            Mini.Position = UDim2.new(miniPos.X.Scale, miniPos.X.Offset + d.X, miniPos.Y.Scale, miniPos.Y.Offset + d.Y)
-        end
-    end)
-end
-
 --==================================================
--- KÉO MENU: CHUỘT + CẢM ỨNG
+-- KÉO MENU + NÚT AVATAR + ĐỔI KÍCH THƯỚC
 --==================================================
 
 local dragging = false
@@ -1365,30 +1687,12 @@ local dragInput
 local dragStart
 local startPos
 
-local function updateDrag(input)
-    local delta = input.Position - dragStart
-
-    Main.Position = UDim2.new(
-        startPos.X.Scale,
-        startPos.X.Offset + delta.X,
-        startPos.Y.Scale,
-        startPos.Y.Offset + delta.Y
-    )
-end
-
 Header.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
     or input.UserInputType == Enum.UserInputType.Touch then
-
         dragging = true
         dragStart = input.Position
         startPos = Main.Position
-
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
     end
 end)
 
@@ -1400,67 +1704,183 @@ Header.InputChanged:Connect(function(input)
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        updateDrag(input)
+    if dragging and input == dragInput then
+        local delta = input.Position - dragStart
+        Main.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
     end
 end)
 
+do
+    local miniDragging = false
+    local miniStart
+    local miniPos
+
+    Mini.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            miniDragging = true
+            miniWasDragged = false
+            miniStart = input.Position
+            miniPos = Mini.Position
+        end
+    end)
+
+    Mini.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            miniDragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if miniDragging and (
+            input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch
+        ) then
+            local delta = input.Position - miniStart
+            if math.abs(delta.X) > 8 or math.abs(delta.Y) > 8 then
+                miniWasDragged = true
+            end
+
+            Mini.Position = UDim2.new(
+                miniPos.X.Scale,
+                miniPos.X.Offset + delta.X,
+                miniPos.Y.Scale,
+                miniPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+local ResizeHandle = new("TextButton", {
+    Size = UDim2.fromOffset(28, 28),
+    Position = UDim2.new(1, -32, 1, -32),
+    BackgroundColor3 = Color3.fromRGB(13, 36, 61),
+    BackgroundTransparency = 0.12,
+    Text = "↘",
+    TextColor3 = COLORS.BLUE2,
+    TextSize = 16,
+    Font = Enum.Font.GothamBold,
+    AutoButtonColor = false,
+    ZIndex = 30,
+}, Main)
+
+corner(ResizeHandle, 9)
+stroke(ResizeHandle, COLORS.BLUE, 0.55, 1)
+
+do
+    local resizing = false
+    local resizeStart
+    local resizeOriginal
+    local resizeInput
+
+    ResizeHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            resizing = true
+            resizeStart = input.Position
+            resizeOriginal = Main.Size
+        end
+    end)
+
+    ResizeHandle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            resizeInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if resizing and input == resizeInput then
+            local d = input.Position - resizeStart
+            local newW = math.clamp(resizeOriginal.X.Offset + d.X, MIN_W, MAX_W)
+            local newH = math.clamp(resizeOriginal.Y.Offset + d.Y, MIN_H, MAX_H)
+            Main.Size = UDim2.fromOffset(newW, newH)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            resizing = false
+            dragging = false
+        end
+    end)
+end
+
 --==================================================
--- RESPONSIVE MOBILE
+-- RESPONSIVE MOBILE / DESKTOP
 --==================================================
 
-local function resize()
+local function layoutMain()
+    local camera = Workspace.CurrentCamera
+    local mobile = camera and camera.ViewportSize.X <= 800 or false
+
+    local w = Main.AbsoluteSize.X
+    local top = 92
+    local sideW = mobile and math.clamp(math.floor(w * 0.22), 92, 112)
+        or math.clamp(math.floor(w * 0.27), 138, 160)
+
+    local contentX = sideW + 14
+
+    Sidebar.Size = UDim2.new(0, sideW, 1, -100)
+    Sidebar.Position = UDim2.fromOffset(8, top)
+
+    for _, page in pairs(Pages) do
+        page.Position = UDim2.fromOffset(contentX, top)
+        page.Size = UDim2.new(1, -(contentX + 8), 1, -100)
+    end
+
+    local compact = mobile or w < 470
+
+    for _, data in pairs(SideButtons) do
+        data.Text.Visible = not compact
+        if compact then
+            data.Icon.Position = UDim2.new(0.5, -13, 0, 0)
+        else
+            data.Icon.Position = UDim2.fromOffset(8, 0)
+        end
+    end
+
+    SideProfile.Size = UDim2.new(1, 0, 0, compact and 48 or 54)
+    SideAvatar.Visible = not compact
+    SideName.Visible = not compact
+    SideDesc.Visible = not compact
+    Footer.Visible = not compact
+    ProfilePill.Visible = not compact
+
+    ResizeHandle.Position = UDim2.new(1, -32, 1, -32)
+end
+
+local function fitToViewport()
     local camera = Workspace.CurrentCamera
     if not camera then return end
 
     local vp = camera.ViewportSize
-    local mobile = vp.X <= 800
-
-    -- Tỉ lệ vừa phải: menu không phủ kín màn hình.
-    local scale = mobile and math.clamp(math.min((vp.X - 34) / 640, (vp.Y - 130) / 430), 0.56, 0.70)
-        or math.clamp(math.min((vp.X - 100) / 640, (vp.Y - 150) / 430), 0.70, 0.86)
-
-    MainScale.Scale = scale
-    Main.Size = UDim2.fromOffset(640, 430)
-    Main.AnchorPoint = Vector2.new(0.5, 0.5)
-    Main.Position = UDim2.new(0.5, 0, 0.5, 0)
-
-    if mobile then
-        Sidebar.Size = UDim2.new(0, 112, 1, -76)
-        Sidebar.Position = UDim2.fromOffset(8, 68)
-
-        for _, data in pairs(SideButtons) do
-            data.Text.Visible = false
-            data.Icon.Position = UDim2.new(0.5, -13, 0, 0)
-        end
-
-        for _, page in pairs(Pages) do
-            page.Position = UDim2.fromOffset(130, 68)
-            page.Size = UDim2.new(1, -138, 1, -76)
-        end
-    else
-        Sidebar.Size = UDim2.new(0, 145, 1, -76)
-        Sidebar.Position = UDim2.fromOffset(10, 68)
-
-        for _, data in pairs(SideButtons) do
-            data.Text.Visible = true
-            data.Icon.Position = UDim2.fromOffset(8, 0)
-        end
-
-        for _, page in pairs(Pages) do
-            page.Position = UDim2.fromOffset(158, 68)
-            page.Size = UDim2.new(1, -167, 1, -76)
-        end
+    if vp.X <= 800 then
+        local w = math.clamp(math.min(430, vp.X - 18), MIN_W, MAX_W)
+        local h = math.clamp(math.min(350, vp.Y - 70), MIN_H, MAX_H)
+        Main.Size = UDim2.fromOffset(w, h)
+        Main.AnchorPoint = Vector2.new(0.5, 0.5)
+        Main.Position = UDim2.new(0.5, 0, 0.5, 0)
     end
+
+    layoutMain()
 end
+
+safe(layoutMain)
+safe(fitToViewport)
 
 safe(function()
     if Workspace.CurrentCamera then
-        Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(resize)
+        Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitToViewport)
     end
 end)
-
-resize()
 
 notification("Delta X - Lag Fix", "Đã tải bản " .. VERSION .. " thành công.", "success")
 
