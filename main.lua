@@ -1,6 +1,6 @@
 --[[
     Delta X - Lag Fix
-    Phiên bản: 1.4
+    Phiên bản: 1.6
     Tác giả: Minh Tiến
     Client-side FPS / Graphics Optimizer
     Chỉ tối ưu đồ họa và giao diện, không tự động chơi game.
@@ -22,7 +22,7 @@ local LocalPlayer = Players.LocalPlayer
 -- CẤU HÌNH
 --==================================================
 
-local VERSION = "1.4"
+local VERSION = "1.6"
 local AVATAR_ID = "rbxassetid://118787890588648"
 local BANNER_ID = "rbxassetid://117945200016708"
 
@@ -482,7 +482,7 @@ corner(Main, 14)
 stroke(Main, Color3.fromRGB(0, 120, 255), 0.25, 1)
 
 -- Thu gọn giao diện để không chiếm gần hết màn hình.
-local MainScale = new("UIScale", {Scale = 0.82}, Main)
+local MainScale = new("UIScale", {Scale = 0.76}, Main)
 
 --==================================================
 -- HEADER
@@ -496,15 +496,36 @@ local Header = new("Frame", {
 
 -- Banner artwork supplied by the user.
 local BannerImage = new("ImageLabel", {
-    Size = UDim2.fromOffset(250, 52),
-    Position = UDim2.new(0, 345, 0, 5),
+    Name = "BannerImage",
+    Size = UDim2.new(1, -10, 1, -10),
+    Position = UDim2.fromOffset(5, 5),
     BackgroundTransparency = 1,
     Image = BANNER_ID,
     ScaleType = Enum.ScaleType.Crop,
-    ImageTransparency = 0.06,
+    ImageTransparency = 0.18,
     ZIndex = 0,
 }, Header)
 corner(BannerImage, 12)
+
+-- Lớp kính tối để banner không lấn chữ.
+local BannerGlass = new("Frame", {
+    Name = "BannerGlass",
+    Size = UDim2.new(1, -10, 1, -10),
+    Position = UDim2.fromOffset(5, 5),
+    BackgroundColor3 = COLORS.BG,
+    BackgroundTransparency = 0.48,
+    BorderSizePixel = 0,
+    ZIndex = 1,
+}, Header)
+corner(BannerGlass, 12)
+local BannerGradient = new("UIGradient", {
+    Rotation = 0,
+    Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.10),
+        NumberSequenceKeypoint.new(0.55, 0.28),
+        NumberSequenceKeypoint.new(1, 0.02),
+    }),
+}, BannerGlass)
 
 local Logo = new("Frame", {
     Size = UDim2.fromOffset(42, 42),
@@ -517,19 +538,24 @@ corner(Logo, 11)
 local LogoText = label(Logo, "▶", 24, COLORS.TEXT, true)
 LogoText.Size = UDim2.fromScale(1, 1)
 LogoText.TextXAlignment = Enum.TextXAlignment.Center
+Logo.ZIndex = 3
+LogoText.ZIndex = 4
 
 local Title = label(Header, "Delta X - Lag Fix", 18, COLORS.TEXT, true)
 Title.Position = UDim2.fromOffset(65, 7)
 Title.Size = UDim2.new(0, 300, 0, 24)
+Title.ZIndex = 3
 
 local Subtitle = label(Header, "Tối ưu hiệu suất • Mượt hơn • Nhẹ hơn", 10, COLORS.MUTED, false)
 Subtitle.Position = UDim2.fromOffset(65, 31)
 Subtitle.Size = UDim2.new(0, 330, 0, 18)
+Subtitle.ZIndex = 3
 
 local Version = label(Header, "v" .. VERSION, 10, COLORS.BLUE2, true)
 Version.Position = UDim2.new(1, -120, 0, 10)
 Version.Size = UDim2.fromOffset(35, 22)
 Version.TextXAlignment = Enum.TextXAlignment.Right
+Version.ZIndex = 3
 
 local Minimize = new("TextButton", {
     Size = UDim2.fromOffset(30, 30),
@@ -543,6 +569,7 @@ local Minimize = new("TextButton", {
 }, Header)
 
 corner(Minimize, 8)
+Minimize.ZIndex = 4
 
 local Close = new("TextButton", {
     Size = UDim2.fromOffset(30, 30),
@@ -556,6 +583,7 @@ local Close = new("TextButton", {
 }, Header)
 
 corner(Close, 8)
+Close.ZIndex = 4
 
 --==================================================
 -- SIDEBAR
@@ -1255,8 +1283,8 @@ end)
 --==================================================
 
 local Mini = new("ImageButton", {
-    Size = UDim2.fromOffset(54, 54),
-    Position = UDim2.new(0, 14, 0.5, -27),
+    Size = UDim2.fromOffset(50, 50),
+    Position = UDim2.new(0, 12, 0.5, -25),
     BackgroundColor3 = Color3.fromRGB(5, 19, 36),
     BackgroundTransparency = 0.08,
     Image = AVATAR_ID,
@@ -1268,9 +1296,26 @@ local Mini = new("ImageButton", {
 }, ScreenGui)
 
 corner(Mini, 1)
-stroke(Mini, COLORS.BLUE, 0.12, 2)
+stroke(Mini, COLORS.BLUE2, 0.08, 2)
 
+-- Vòng sáng nhẹ quanh nút nổi.
+local MiniGlow = new("Frame", {
+    Name = "MiniGlow",
+    Size = UDim2.new(1, 10, 1, 10),
+    Position = UDim2.fromOffset(-5, -5),
+    BackgroundTransparency = 1,
+    Active = false,
+    ZIndex = 0,
+}, Mini)
+corner(MiniGlow, 999)
+stroke(MiniGlow, COLORS.BLUE, 0.55, 2)
+
+local miniWasDragged = false
 Mini.MouseButton1Click:Connect(function()
+    if miniWasDragged then
+        miniWasDragged = false
+        return
+    end
     Mini.Visible = false
     Main.Visible = true
 end)
@@ -1305,6 +1350,7 @@ do
     UserInputService.InputChanged:Connect(function(input)
         if miniDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local d = input.Position - miniStart
+            if math.abs(d.X) > 6 or math.abs(d.Y) > 6 then miniWasDragged = true end
             Mini.Position = UDim2.new(miniPos.X.Scale, miniPos.X.Offset + d.X, miniPos.Y.Scale, miniPos.Y.Offset + d.Y)
         end
     end)
@@ -1371,8 +1417,8 @@ local function resize()
     local mobile = vp.X <= 800
 
     -- Tỉ lệ vừa phải: menu không phủ kín màn hình.
-    local scale = mobile and math.clamp(math.min((vp.X - 24) / 640, (vp.Y - 110) / 430), 0.62, 0.78)
-        or math.clamp(math.min((vp.X - 80) / 640, (vp.Y - 120) / 430), 0.78, 0.92)
+    local scale = mobile and math.clamp(math.min((vp.X - 34) / 640, (vp.Y - 130) / 430), 0.56, 0.70)
+        or math.clamp(math.min((vp.X - 100) / 640, (vp.Y - 150) / 430), 0.70, 0.86)
 
     MainScale.Scale = scale
     Main.Size = UDim2.fromOffset(640, 430)
@@ -1420,7 +1466,7 @@ notification("Delta X - Lag Fix", "Đã tải bản " .. VERSION .. " thành cô
 
 print("Delta X - Lag Fix v" .. VERSION .. " loaded.")
 
--- Apply uploaded Delta X artwork after UI is built.
+-- Đồng bộ asset ảnh nếu giao diện được parent vào PlayerGui.
 task.defer(function()
     pcall(function()
         local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
