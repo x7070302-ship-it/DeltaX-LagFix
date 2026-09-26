@@ -1,6 +1,6 @@
 --[[
 ============================================================
- AETHER  v2.0  —  Light Glass · VIP Lag · Key Auth
+ AETHER  v2.5  —  Light Glass · Menu Fix · VIP Lag · Key Auth
  Full: Lag Fix VIP + Music + AI + Speed + Spin + Godmode
        + ESP + Sword + Aura + Invis + Items + Save + Login
 ============================================================
@@ -16,7 +16,7 @@ if _G.Aether_Engine then
 	end)
 end
 
-local VERSION = "2.0"
+local VERSION = "2.5"
 local APP_NAME = "Aether"
 local ScriptAlive = true
 local SESSION_START = os.clock()
@@ -567,7 +567,7 @@ local function applyLightingBoost(level)
 			Lighting.Brightness = math.min(Lighting.Brightness, 1.2)
 		end
 		if level >= 3 then
-			pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+			pcall(function() pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end) end)
 		end
 	end)
 end
@@ -654,7 +654,7 @@ local function applyVipLag(on)
 		setFeature(f, false)
 	end
 	pcall(function()
-		settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+		pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
 		Lighting.GlobalShadows = false
 		Lighting.FogEnd = 9e9
 		Lighting.Brightness = 1
@@ -699,7 +699,7 @@ local function applyPreset(name)
 			Lighting.GlobalShadows = Original.GlobalShadows
 			Lighting.FogEnd = Original.FogEnd
 			Lighting.Brightness = Original.Brightness
-			settings().Rendering.QualityLevel = Original.QualityLevel
+			pcall(function() settings().Rendering.QualityLevel = Original.QualityLevel end)
 		end)
 		for _, f in ipairs({"Particles","Trails","Beams","FireSmoke","PostFX","Terrain"}) do setFeature(f, true) end
 		setFeature("Shadows", Original.GlobalShadows)
@@ -2134,6 +2134,16 @@ if not ScreenGui.Parent then pcall(function() ScreenGui.Parent = CoreGui end) en
 if not ScreenGui.Parent then pcall(function() ScreenGui.Parent = PlayerGui end) end
 if not ScreenGui.Parent then pcall(function() ScreenGui.Parent = GUI_PARENT end) end
 print("[Aether] ScreenGui parent =", ScreenGui.Parent and ScreenGui.Parent.Name)
+if not ScreenGui.Parent then
+	warn("[Aether] ScreenGui has no parent — UI will not show")
+	pcall(function()
+		if BootLbl then
+			BootLbl.Text = "Aether · GUI parent FAIL"
+			BootLbl.BackgroundColor3 = Color3.fromRGB(230, 70, 90)
+		end
+	end)
+end
+pcall(function() ScreenGui.Enabled = true end)
 
 local cam = workspace.CurrentCamera
 local function fitSize()
@@ -4105,12 +4115,22 @@ KeyBox.FocusLost:Connect(function(enter)
 	if enter then tryLogin() end
 end)
 
--- Force login UI visible
+-- Force login UI visible (menu-not-showing fix)
 pcall(function()
+	if not ScreenGui.Parent then
+		if gethui then ScreenGui.Parent = gethui()
+		elseif CoreGui then ScreenGui.Parent = CoreGui
+		elseif PlayerGui then ScreenGui.Parent = PlayerGui end
+	end
 	ScreenGui.Enabled = true
+	ScreenGui.DisplayOrder = 999999
 	Main.Visible = false
 	LoginFrame.Visible = true
-	if LoginOverlay then LoginOverlay.Visible = true end
+	LoginFrame.ZIndex = 200
+	if LoginOverlay then
+		LoginOverlay.Visible = true
+		LoginOverlay.ZIndex = 190
+	end
 end)
 
 do
@@ -4129,10 +4149,19 @@ do
 	end
 end
 
--- Remove boot banner once main UI exists
-pcall(function()
-	if BootGui then BootGui:Destroy() end
+-- Keep boot until login is on-screen, then fade out
+task.delay(1.2, function()
+	pcall(function()
+		if LoginFrame and LoginFrame.Visible and LoginFrame.Parent then
+			if BootGui then BootGui:Destroy() end
+		else
+			if BootLbl then
+				BootLbl.Text = "Login hidden — press F9"
+				BootLbl.BackgroundColor3 = Color3.fromRGB(230, 70, 90)
+			end
+		end
+	end)
 end)
 
 print("[Aether] v" .. VERSION .. " ready · parent=" .. tostring(ScreenGui.Parent and ScreenGui.Parent.Name))
-print("[Aether] Test key: mtdz")
+print("[Aether] Test key: mtdz · Login Visible=" .. tostring(LoginFrame.Visible))
